@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="4" main_tree_to_execute="BasicTest">
+  
+  <BehaviorTree ID="BasicTest">
+    <Sequence name="BasicTestSequence">
+      <!-- 1. 起飞 -->
+      <Takeoff goal="0.0;0.0;1.0"/>
+      <!-- 2. 移动到起始位置 -->
+      <GoTo goal="0.0;-1.0;1.0"/>
+      <!-- 3. 等待飞机停稳 -->
+      <Delay delay_msec="3000">
+        <AlwaysSuccess/>
+      </Delay>
+      <!-- 4. 识别方框位置 -->
+      <TargetLocator object_name="square_frame" object_width="1.3" object_height="1.3" occlusion_direction="None" expected_pos="3.0;-1.2;1.0" z_tolerance="0.5" position_3d="{frame_center}" filter_window_size="20"/>
+    </Sequence>
+  </BehaviorTree>
+
+</root>

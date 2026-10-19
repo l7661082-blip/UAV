@@ -1,0 +1,50 @@
+<launch>
+    <!-- 日志目录（从环境变量 LOG_DIR 读取，未设置则使用相对路径） -->
+    <arg name="log_dir" default="/tmp/mission_logs"/>
+
+    <!-- 视觉与控制参数配置 -->
+    <param name="fx" value="320" type="double"/>
+    <param name="center_tolerance" value="0.25" type="double"/>
+    <param name="tolerance" value="0.2" type="double"/>
+    <param name="yaw_tolerance" value="0.2" type="double"/>
+    <param name="cx" value="320" type="double"/>
+    <param name="cy" value="240" type="double"/>
+    
+    <!-- 话题配置 -->
+    <param name="detect_result_topic" value="/objects" type="str"/>
+    <param name="goal_topic" value="/move_base_simple/goal" type="str"/>
+    <param name="planner_cmd_topic" value="/planning/pos_cmd" type="str"/>
+
+    <!-- RGB相机外参 (相机相对于机身) -->
+    <rosparam param="cam2body_R">[0,0,1, -1,0,0, 0,-1,0]</rosparam>
+    <rosparam param="cam2body_T">[0.1, 0.04, 0.05]</rosparam>
+
+   <!-- 安全边界参数 -->
+    <param name="safety/enabled" value="true" type="bool"/>
+    <param name="safety/x_min" value="-1" type="double"/>
+    <param name="safety/x_max" value="7.0" type="double"/>
+    <param name="safety/y_min" value="-5.0" type="double"/>
+    <param name="safety/y_max" value="4.0" type="double"/>
+    <param name="safety/z_min" value="-0.5" type="double"/>
+    <param name="safety/z_max" value="2.5" type="double"/>
+
+    <!-- 运行任务节点 -->
+    <node pkg="mission_pkg" type="bt_ros" name="full_competition_node" output="screen">
+        <param name="config_path" value="$(find mission_pkg)/config/full_competition.xml" type="str"/>
+    </node>
+
+    <!-- 日志录制（可选，默认开启） -->
+    <arg name="enable_logging" default="true"/>
+    
+    <node if="$(arg enable_logging)" 
+          pkg="rosbag" 
+          type="record" 
+          name="mission_logger"
+          args="/mavros/local_position/odom 
+                /mavros/state 
+                /mavros/setpoint_raw/local 
+                /objects 
+                /planning/pos_cmd 
+                /move_base_simple/goal 
+                -o $(arg log_dir)/mission_"/>
+</launch>

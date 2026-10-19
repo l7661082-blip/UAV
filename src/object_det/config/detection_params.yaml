@@ -1,0 +1,38 @@
+# 目标检测配置文件
+
+# 模型配置
+model:
+  path: "$(find object_det)/models/best.pt"  # 模型文件路径
+  conf_threshold: 0.5                         # 置信度阈值 [0.0-1.0]
+  use_half: true                              # 实验馓FP16（GPU上速度加倍，显存减半）
+  max_detections: 2                          # 单帧最大检测数量
+
+# 目标类别配置
+detection:
+  target_classes: ["square_frame", "red_balloon"]            # 模型原始类别名（气球颜色在 det.py 中细分）
+
+# 气球追踪配置
+balloon_tracking:
+  red_channel_threshold: 60                   # 红色通道阈值 [0-255]
+
+# 环境配置
+environment:
+  is_simulation: false                         # 是否为仿真环境
+  # 仿真环境：直接使用 BGR 图像
+  # 真机环境：需要进行颜色通道转换
+
+# 图像保存配置（调试用）
+image_saving:
+  enabled: false                               # 是否开启自动保存（需要通过 log_dir 参数指定保存目录）
+  save_classes: ["red_balloon", "blue_balloon", "purple_balloon", "square_frame"]  # 需要保存图片的类别
+
+# ROS 话题配置
+topics:
+  image_input: "/rflysim/sensor1/img_rgb"      # 输入图像话题
+  detection_output: "/objects"                # 检测结果输出话题
+  control_input: "/detect_ctrl"               # 检测控制话题
+
+# 可视化配置
+visualization:
+  show_window: true                           # 显示检测窗口（Docker 容器有桌面，可以正常显示）
+  window_name: "Object Detection"             # 窗口名称

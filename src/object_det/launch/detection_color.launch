@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- 目标检测 + 气球颜色分类 Launch 文件 -->
+    <!-- 使用 det_color.py: YOLO 检测 + HSV 颜色分类，不再需要单独的 hsv_det -->
+    
+    <!-- 参数：配置文件路径 -->
+    <arg name="config_file" default="$(find object_det)/config/detection_params.yaml" />
+    
+    <!-- 加载参数文件到参数服务器 -->
+    <rosparam command="load" file="$(arg config_file)" ns="object_detection" />
+    
+    <!-- 启动检测 + 颜色分类节点（通过 conda wrapper 使用 GPU 版 PyTorch） -->
+    <node name="object_detection_node" pkg="object_det" type="det_color_conda.sh" output="screen">
+        <param name="param_namespace" value="object_detection" />
+    </node>
+    
+</launch>

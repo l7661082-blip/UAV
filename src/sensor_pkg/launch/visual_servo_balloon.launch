@@ -1,0 +1,53 @@
+<launch>
+    <!-- 视觉伺服刺破气球：body 系 VX + VZ + yaw_rate 控制 -->
+    
+    <!-- ========== 目标选择 ========== -->
+    <arg name="target_balloon" default="red_balloon" />
+
+    <!-- ========== 里程计话题 ========== -->
+    <arg name="odom_topic" default="/rflysim/uav1/local/odom" />
+
+    <!-- ========== 图像参数 ========== -->
+    <arg name="image_width"  default="640" />
+    <arg name="image_height" default="640" />
+
+    <!-- HSV 气球检测节点 -->
+    <node pkg="object_det" type="hsv_det.py" name="hsv_balloon_detector" output="screen">
+        <param name="image_topic" value="/rflysim/sensor1" />
+        <param name="is_simulation" value="true" />
+        <param name="show_visualization" value="true" />
+    </node>
+
+    <!-- 视觉伺服节点 -->
+    <node pkg="sensor_pkg" type="visual_servo_balloon.py" name="visual_servo_balloon" output="screen">
+        <param name="target_balloon" value="$(arg target_balloon)" />
+        <param name="odom_topic"     value="$(arg odom_topic)" />
+        <param name="image_width"    value="$(arg image_width)" />
+        <param name="image_height"   value="$(arg image_height)" />
+
+        <!-- PD 增益 - 偏航 yaw_rate -->
+        <param name="k_p_yaw"     value="0.003" />
+        <param name="k_d_yaw"     value="0.008" />
+        <param name="deadzone_yaw" value="8.0" />
+        <param name="max_yaw_rate" value="0.5" />
+
+        <!-- PD 增益 - 垂直 VZ -->
+        <param name="k_p_vz"      value="0.002" />
+        <param name="k_d_vz"      value="0.006" />
+        <param name="deadzone_vz" value="10.0" />
+        <param name="max_vz"      value="0.3" />
+
+        <!-- 速度参数 -->
+        <param name="forward_velocity"  value="0.35" />
+
+        <!-- 对齐 & 冲刺 -->
+        <param name="align_threshold"       value="15.0" />
+        <param name="area_ratio_threshold"  value="0.08" />
+        <param name="sprint_velocity"       value="1.5" />
+        <param name="sprint_time"           value="1.2" />
+
+        <!-- 搜索 -->
+        <param name="search_yaw_rate" value="0.3" />
+        <param name="lost_timeout"    value="3.0" />
+    </node>
+</launch>

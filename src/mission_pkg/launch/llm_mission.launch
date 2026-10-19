@@ -1,0 +1,127 @@
+<launch>
+    <!-- 任务参数配置 -->
+    <param name="goal_topic" value="/move_base_simple/goal" type="str"/>
+    <param name="planner_cmd_topic" value="/planning/pos_cmd" type="str"/>
+
+    <!-- 相机内参 (640x480, 90° FOV) -->
+    <param name="fx" value="320.0" type="double"/>
+    <param name="fy" value="320.0" type="double"/>
+    <param name="cx" value="320.0" type="double"/>
+    <param name="cy" value="240.0" type="double"/>
+
+    <!-- 相机外参：相机到机体坐标系的变换 (ENU 机体系) -->
+    <rosparam param="cam2body_R">[0,0,1, -1,0,0, 0,-1,0]</rosparam>
+    <rosparam param="cam2body_T">[0.1, 0.04, 0.05]</rosparam>
+
+    <!-- 目标检测话题 -->
+    <param name="detect_result_topic" value="/objects" type="str"/>
+
+    <!-- 到达判定容差 -->
+    <param name="tolerance" value="0.15" type="double"/>
+    <param name="yaw_tolerance" value="0.15" type="double"/>
+
+    <!-- 安全边界参数 -->
+    <param name="safety/enabled" value="true" type="bool"/>
+    <param name="safety/x_min" value="-1.0" type="double"/>
+    <param name="safety/x_max" value="6.0" type="double"/>
+    <param name="safety/y_min" value="-3.0" type="double"/>
+    <param name="safety/y_max" value="3.0" type="double"/>
+    <param name="safety/z_min" value="-0.1" type="double"/>
+    <param name="safety/z_max" value="2.5" type="double"/>
+
+    <!-- ============================================ -->
+    <!-- 任务航点坐标配置 (ENU: x=东/右, y=北/前, z=上) -->
+    <!-- 比赛前根据实际场地调整                          -->
+    <!-- ============================================ -->
+
+    <!-- 起飞 -->
+    <param name="takeoff/goal" value="0.0;0.0;1.0" type="str"/>
+
+    <!-- 穿越方框 -->
+    <param name="cross_frame/observe_pos"        value="0.0;-1.0;1.0"  type="str"/>    <!-- 观察位置 -->
+    <param name="cross_frame/observe_delay_ms"    value="2000"          type="double"/> <!-- 到达后等待时间(ms) -->
+    <param name="cross_frame/object_width"        value="1.3"          type="double"/> <!-- 方框物理宽度(m) -->
+    <param name="cross_frame/object_height"       value="1.3"          type="double"/> <!-- 方框物理高度(m) -->
+    <param name="cross_frame/occlusion_direction" value="right"         type="str"/>    <!-- 遮挡方向 -->
+    <param name="cross_frame/expected_pos"        value="3.25;-0.4;1.0" type="str"/>    <!-- 方框预期位置 -->
+    <param name="cross_frame/z_tolerance"         value="0.5"           type="double"/> <!-- z方向容差 -->
+    <param name="cross_frame/filter_window_size"  value="20"            type="double"/> <!-- 滤波窗口 -->
+    <param name="cross_frame/offset_z"            value="1.0"           type="double"/> <!-- 规划z偏移 -->
+
+    <!-- ArUco 检测 -->
+    <param name="aruco/hover_pos" value="4.5;0.5;1.2" type="str"/>     <!-- 二维码上方悬停位置 -->
+
+    <!-- 返回穿越方框 -->
+    <param name="return_cross_frame/turn_pos"     value="4.5;0.5;1.8"   type="str"/>    <!-- 转向位置 -->
+    <param name="return_cross_frame/turn_yaw"     value="3.14159"        type="double"/> <!-- 转向航向(rad) -->
+    <param name="return_cross_frame/body_forward"  value="0.5;0.0;0.0"   type="str"/>    <!-- 机体系前进距离 -->
+
+    <!-- 降落 -->
+    <param name="land/return_pos" value="0.0;0.0;0.5" type="str"/>     <!-- 降落前返回位置 -->
+    <param name="land/return_yaw" value="0.0" type="double"/>         <!-- 降落前航向(rad) -->
+
+    <!-- ============================================ -->
+    <!-- 气球颜色→区域映射（比赛前根据实际配置修改）    -->
+    <!-- ============================================ -->
+    <param name="balloon_color_red"    value="A" type="str"/>
+    <param name="balloon_color_blue"   value="C" type="str"/>
+    <param name="balloon_color_purple" value="B" type="str"/>
+
+    <!-- ============================================ -->
+    <!-- 穿回框后掉头朝向                               -->
+    <!-- ============================================ -->
+    <param name="return_cross_frame/exit_yaw" value="0.0" type="double"/>
+
+    <!-- ============================================ -->
+    <!-- 气球打击区域配置（比赛前调整）                   -->
+    <!-- approach_pos: PlanningControl 规划飞到的接近点  -->
+    <!-- goal: 到达后转向的位置                          -->
+    <!-- yaw:  到达位置时的机头朝向 (rad)                -->
+    <!-- ============================================ -->
+    <!-- A区 (红色气球) -->
+    <param name="balloon_zone_A/approach_pos" value="5.3;1.0;1.0"  type="str"/>
+    <param name="balloon_zone_A/goal"         value="5.3;1.0;1.0"  type="str"/>
+    <param name="balloon_zone_A/yaw"          value="1.5708"        type="double"/>
+    <!-- B区 (紫色气球) -->
+    <param name="balloon_zone_B/approach_pos" value="5.3;-2.0;0.7" type="str"/>
+    <param name="balloon_zone_B/goal"         value="5.3;-2.0;0.7" type="str"/>
+    <param name="balloon_zone_B/yaw"          value="3.14159"       type="double"/>
+    <!-- C区 (蓝色气球) -->
+    <param name="balloon_zone_C/approach_pos" value="5.3;1.0;0.7"  type="str"/>
+    <param name="balloon_zone_C/goal"         value="5.3;1.0;0.7"  type="str"/>
+    <param name="balloon_zone_C/yaw"          value="-1.5708"       type="double"/>
+
+    <!-- ============================================ -->
+    <!-- VisualServo 视觉伺服参数（与手调 XML 一致）     -->
+    <!-- ============================================ -->
+    <param name="visual_servo/k_p_yaw_rate"            value="0.003" type="double"/>
+    <param name="visual_servo/k_d_yaw_rate"            value="0.001" type="double"/>
+    <param name="visual_servo/k_p_vz"                  value="0.01"  type="double"/>
+    <param name="visual_servo/k_d_vz"                  value="0.006" type="double"/>
+    <param name="visual_servo/approach_area_threshold"  value="0.08"  type="double"/>
+    <param name="visual_servo/forward_velocity"         value="1.0"   type="double"/>
+    <param name="visual_servo/sprint_velocity"          value="1.5"   type="double"/>
+    <param name="visual_servo/sprint_time"              value="1.2"   type="double"/>
+
+    <!-- 运行任务节点（LLM 模式） -->
+    <node pkg="mission_pkg" type="bt_ros" name="llm_mission_node" output="screen">
+        <param name="mode" value="llm" type="str"/>
+    </node>
+
+    <!-- 日志录制（可选，默认关闭） -->
+    <arg name="enable_logging" default="false"/>
+    
+    <node if="$(arg enable_logging)" 
+          pkg="rosbag" 
+          type="record" 
+          name="mission_logger"
+          args="/mavros/local_position/odom 
+                /mavros/state 
+                /mavros/setpoint_raw/local 
+                /objects 
+                /planning/pos_cmd 
+                /move_base_simple/goal 
+                /mission_command 
+                /mission_result 
+                -o $(find mission_pkg)/../../logs/llm_mission_"/>
+</launch>

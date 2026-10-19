@@ -1,0 +1,21 @@
+<launch>
+  <!-- Cloud transform node: 将深度点云从传感器坐标系转换到 world 坐标系 -->
+  <node pkg="sensor_pkg" type="cloud_transform_node.py" name="cloud_transform_node" output="screen">
+    <!-- 话题配置 -->
+    <param name="odom_topic"  value="/rflysim/uav1/local/odom" />
+    <param name="cloud_in"    value="/rflysim/sensor0/Depth_Cloud" />
+    <param name="cloud_out"   value="/cloud_registered" />
+    <param name="frame_id"    value="world" />
+
+    <!-- 传感器外参 (来自 Config.json 的 SensorPosXYZ / SensorAngEular) -->
+    <param name="sensor_pos_x" value="0.2" />
+    <param name="sensor_pos_y" value="0.0" />
+    <param name="sensor_pos_z" value="0.0" />
+    <param name="sensor_ang_roll"  value="0.0" />
+    <param name="sensor_ang_pitch" value="0.0" />
+    <param name="sensor_ang_yaw"   value="0.0" />
+
+    <!-- true: 点云在传感器坐标系下; false: 点云已在机体坐标系下 -->
+    <param name="cloud_in_sensor_frame" value="true" />
+  </node>
+</launch>

@@ -1,0 +1,13 @@
+build/
+devel/
+logs/
+install/
+src/cv_bridge/
+src/behaviortree_cpp/
+src/object_det/third_party/
+*.pt
+*.pth
+*.onnx
+*.bag
+*.log
+__pycache__/

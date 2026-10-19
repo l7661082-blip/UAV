@@ -1,0 +1,51 @@
+<root BTCPP_format="4">
+    <BehaviorTree ID="MainTree">
+        <Sequence name="root">
+            <!-- 1. 起飞到 1.5 米高度 (默认需遥控器解锁) -->
+            <Takeoff goal="0.0;0.0;1.0" auto_arm="0" />
+
+            <!-- 2. 使用 GoTo 指令进行基础坐标点移动 -->
+            <GoTo goal="1.0;0.0;1.0" tolerance="0.2" />  <!-- 向前移动 1m -->
+            <GoTo goal="1.0;1.0;1.0" tolerance="0.2" />  <!-- 向左移动 1m -->
+            <GoTo goal="0.0;1.0;1.0" tolerance="0.2" />  <!-- 向后移动 1m -->
+            <GoTo goal="0.0;0.0;1.0" tolerance="0.2" />  <!-- 向右移动 1m (回到原点) -->
+
+            <!-- 3. 使用 PlanningControl 进行带偏移的规划移动 -->
+            <!-- 这里 target_data 通常由识别节点更新，此处作为原子操作演示 -->
+            <PlanningControl target_data="2.0;0.0;1.0" offset_z="0.5" tolerance="0.2" />
+
+            <!-- 4. 视觉伺服 (演示) -->
+            <!-- <VisualServo object_name="target" /> -->
+
+            <!-- 5. 任务结束：降落 -->
+            <Land use_speed="0" />
+        </Sequence>
+    </BehaviorTree>
+
+    <TreeNodesModel>
+        <Action ID="Takeoff">
+            <input_port name="goal" type="Position3D">起飞目标位置 (x, y, z)</input_port>
+            <input_port name="auto_arm" type="int">0: RC arm, 1: 程序自动 arm</input_port>
+        </Action>
+        <Action ID="Land">
+            <input_port name="use_speed" type="int">0: AUTO.LAND, 1: 速度下降</input_port>
+        </Action>
+        <Action ID="GoTo">
+            <input_port name="goal" type="Position3D">目标位置 (x, y, z)</input_port>
+            <input_port name="tolerance" type="double">到达容差 (米)</input_port>
+        </Action>
+        <Action ID="PlanningControl">
+            <input_port name="target_data" type="ObjectData">目标点(3D世界坐标)</input_port>
+            <input_port name="offset_z" type="double">相对于目标的Z轴偏移(随飞机航向)</input_port>
+            <input_port name="tolerance" type="double">到达容差 (米)</input_port>
+        </Action>
+        <Action ID="TargetEstimator">
+            <input_port name="object_name" type="std::string">识别目标名称</input_port>
+            <input_port name="object_width" type="double">实际物体宽度 (米)</input_port>
+            <output_port name="target_data" type="ObjectData">输出的目标位置数据</output_port>
+        </Action>
+        <Action ID="VisualServo">
+            <input_port name="object_name" type="std::string">追踪目标名称</input_port>
+        </Action>
+    </TreeNodesModel>
+</root>

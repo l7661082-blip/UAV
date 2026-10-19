@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="4" main_tree_to_execute="FullCompetition">
+  
+  <BehaviorTree ID="FullCompetition">
+    <Sequence name="MainLoop">
+      <!-- 1. 起飞 -->
+      <Takeoff goal="0.0;0.0;1.0"/>
+      <!-- 2. 移动到观察位置 -->
+      <GoTo goal="0.0;-1.0;1.0"/> <!-- ENU 坐标系-->
+      <!-- 3. 识别方框位置 ， 基于ENU坐标系-->
+      <TargetLocator object_name="square_frame" object_width="1.3" object_height="1.3" occlusion_direction="right" expected_pos="3.25;-0.4;1.0" z_tolerance="0.5" confidence_threshold="0.7" position_3d="{frame_center}"/>
+      <!-- 4. 规划穿过方框 -->
+      <PlanningControl goal="{frame_center}" offset_z="1.0" final_position="{planning_end_pos}"/>
+      <!-- 5. 到达目标点并检测二维码 -->
+      <GoTo goal="4.5;0.5;1.2"/>
+      <Parallel success_count="2" failure_count="1">
+        <GoTo goal="4.5;0.5;1.8"/>
+        <ArucoDetector aruco_id="{detected_aruco_id}"/>
+      </Parallel>
+      <!-- 6. 旋转180度 -->
+      <GoTo goal="4.5;0.5;1.8" yaw="3.14159"/>
+      <!-- 7. 返回规划终点 -->
+      <GoTo goal="{planning_end_pos}"/>
+      <!-- 8. 反向穿过方框 -->
+      <PlanningControl goal="{frame_center}"/>
+      <!-- 9. 机体系前进20cm -->
+      <GoTo goal="0.5;0.0;0.0" frame="1"/>
+      <!-- 9.5 掉头朝向C区（从yaw≈π转到yaw=0，面向+x方向） -->
+      <GoTo goal="0.5;0.0;0.0" frame="1" yaw="0.0"/>
+      <!-- 10. 规划飞到C区左端，准备打击A区气球 -->
+      <PlanningControl goal="5.3;1.0;1.0"/>
+      <!-- ============================================================ -->
+      <!-- 打击气球阶段 (默认: A区红球)                                   -->
+      <!-- 后续由大模型决定打击目标，需替换以下参数:                         -->
+      <!--   A区红球: pos=5.3;1.0;1.0  yaw=π/2(1.5708) 朝+y              -->
+      <!--   C区蓝球: pos=5.3;1.0;1.0  yaw=π/2(1.5708) 朝+y 左转90°     -->
+      <!--   B区紫球: pos=5.3;-1.0;1.0 yaw=-π/2(-1.5708) 朝-y            -->
+      <!-- ============================================================ -->
+      <!-- 11. 旋转朝向A区气球方向（yaw=π/2，即朝+Y方向） -->
+      <GoTo goal="5.3;1.0;1.0" yaw="1.5708"/>
+      <!-- 12. 跟踪并撞击A区气球 -->
+      <!-- 超时后 Timeout 返回 FAILURE，ForceSuccess 将其转为 SUCCESS -->
+      <ForceSuccess>
+        <Timeout msec="50000">
+          <Parallel success_count="1" failure_count="1">
+            <!-- 持续跟踪：实时计算气球像素坐标 -->
+            <TargetTracker 
+                object_name="red_balloon"
+                confidence_threshold="0.8"
+                pixel_target="{balloon_pixel}" />
+            
+            <!-- 视觉伺服：VX+VZ+yaw_rate PD控制 -->
+            <!-- k_p_yaw_rate="0.003" k_d_yaw_rate="0.008" k_p_vz="0.002" k_d_vz="0.006" approach_area_threshold="0.08" forward_velocity="0.35" sprint_velocity="1.5" sprint_time="1.2" -->
+            <VisualServo 
+                pixel_target="{balloon_pixel}"
+                k_p_yaw_rate="0.003"
+                k_d_yaw_rate="0.001"
+                k_p_vz="0.01"
+                k_d_vz="0.006"
+                approach_area_threshold="0.08"
+                forward_velocity="0.35"
+                sprint_velocity="1.5"
+                sprint_time="1.2" />
+          </Parallel>
+        </Timeout>
+      </ForceSuccess>
+      <!-- 13. 返回起点 -->
+      <GoTo goal="0.0;0.0;0.5" yaw="0.0"/>
+      <!-- 14. 降落 -->
+      <Land use_speed="0" />
+    </Sequence>
+  </BehaviorTree>
+
+</root>

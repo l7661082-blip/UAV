@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- 目标检测节点 Launch 文件 -->
+    
+    <!-- 参数：配置文件路径 -->
+    <arg name="config_file" default="$(find object_det)/config/detection_params.yaml" />
+    
+    <!-- 加载参数文件到参数服务器 -->
+    <rosparam command="load" file="$(arg config_file)" ns="object_detection" />
+    
+    <!-- 启动检测节点 -->
+    <node name="object_detection_node" pkg="object_det" type="det.py" output="screen">
+        <!-- 节点会从 /object_detection 命名空间读取参数 -->
+        <!-- 指定参数查找的命名空间 -->
+        <param name="param_namespace" value="object_detection" />
+    </node>
+    
+</launch>

@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- HSV 颜色气球检测节点 (替代 YOLO) -->
+    
+    <node name="hsv_balloon_detector" pkg="object_det" type="hsv_det.py" output="screen">
+        <param name="image_topic"       value="/camera/color/image_raw" type="str"/>
+        <param name="output_topic"      value="/objects"                type="str"/>
+        <param name="show_visualization" value="true"                   type="bool"/>
+        <param name="is_simulation"     value="true"                   type="bool"/>
+        
+        <!-- 最小轮廓面积（像素^2），越大则过滤越多小噪点 -->
+        <param name="min_contour_area"  value="200"  type="int"/>
+        <!-- 最小圆度（0~1），气球应接近圆形 -->
+        <param name="min_circularity"   value="0.3"  type="double"/>
+    </node>
+</launch>

@@ -1,0 +1,35 @@
+<launch>
+    <!-- 穿框单独测试 (static 模式) -->
+
+    <!-- 相机内参 (640x480, 90° FOV) -->
+    <param name="fx" value="320.0" type="double"/>
+    <param name="fy" value="320.0" type="double"/>
+    <param name="cx" value="320.0" type="double"/>
+    <param name="cy" value="240.0" type="double"/>
+
+    <!-- 相机外参：相机到机体坐标系的变换 (ENU 机体系) -->
+    <rosparam param="cam2body_R">[0,0,1, 1,0,0, 0,1,0]</rosparam>
+    <rosparam param="cam2body_T">[0.1, -0.04, 0.0]</rosparam>
+
+    <!-- 话题 -->
+    <param name="goal_topic" value="/move_base_simple/goal" type="str"/>
+    <param name="planner_cmd_topic" value="/planning/pos_cmd" type="str"/>
+    <param name="detect_result_topic" value="/objects" type="str"/>
+
+    <param name="tolerance" value="0.2" type="double"/>
+    <param name="yaw_tolerance" value="0.2" type="double"/>
+
+    <!-- 安全边界 (ENU) -->
+    <param name="safety/enabled" value="true" type="bool"/>
+    <param name="safety/x_min" value="-1.0" type="double"/>
+    <param name="safety/x_max" value="6.0" type="double"/>
+    <param name="safety/y_min" value="-3.0" type="double"/>
+    <param name="safety/y_max" value="3.0" type="double"/>
+    <param name="safety/z_min" value="-0.1" type="double"/>
+    <param name="safety/z_max" value="2.5" type="double"/>
+
+    <node pkg="mission_pkg" type="bt_ros" name="cross_frame_test" output="screen">
+        <param name="mode" value="static"/>
+        <param name="config_path" value="$(find mission_pkg)/config/cross_frame.xml"/>
+    </node>
+</launch>
