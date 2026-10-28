@@ -117,8 +117,13 @@ xterm $XTERM_OPTS -T "LLM Mission (mission_once)" \
 LLM_PID=$!
 echo -e "${GREEN}      LLM PID: ${LLM_PID}${NC}"
 
-echo -e "${YELLOW}      等待大模型加载 (10s)...${NC}"
-sleep 10
+# /mission_llm_ready 仅在权重加载及提示词注入完成后由模型脚本发布。
+echo -e "${YELLOW}      等待大模型就绪，最长 60s ...${NC}"
+if ! timeout 60s rostopic echo -n 1 /mission_llm_ready 2>/dev/null | grep -q 'READY'; then
+    echo -e "${RED}[ERROR] 大模型 60s 内未就绪，停止启动任务节点${NC}"
+    exit 1
+fi
+echo -e "${GREEN}[OK] 大模型与提示词已就绪${NC}"
 
 # =====================================================================
 # 2. 启动 YOLO 目标检测（独立 xterm，模型加载较慢，先启动）
@@ -212,20 +217,11 @@ sleep 2
 # =====================================================================
 echo ""
 echo -e "${YELLOW}等待 YOLO 模型加载完成 ...${NC}"
-YOLO_WAIT=0
-YOLO_MAX_WAIT=120
-while [ $YOLO_WAIT -lt $YOLO_MAX_WAIT ]; do
-    if rostopic info /objects 2>/dev/null | grep -q "Publishers"; then
-        echo -e "${GREEN}[OK] YOLO 模型已加载完成！(${YOLO_WAIT}s)${NC}"
-        break
-    fi
-    sleep 2
-    YOLO_WAIT=$((YOLO_WAIT + 2))
-    echo -e "${YELLOW}      已等待 ${YOLO_WAIT}s ...${NC}"
-done
-if [ $YOLO_WAIT -ge $YOLO_MAX_WAIT ]; then
-    echo -e "${RED}[WARN] YOLO 模型加载超时(${YOLO_MAX_WAIT}s)，继续启动...${NC}"
+if ! timeout 120s rostopic echo -n 1 /objects >/dev/null 2>&1; then
+    echo -e "${RED}[ERROR] 120s 内未收到 /objects 检测结果，请检查 YOLO 和图像话题${NC}"
+    exit 1
 fi
+echo -e "${GREEN}[OK] /objects 已收到检测结果${NC}"
 
 # =====================================================================
 # 9. 启动 LLM 任务节点（独立 xterm，监听 /mission_command）
@@ -234,6 +230,8 @@ echo ""
 echo -e "${GREEN}[9/11] 启动 LLM 任务节点 [独立 xterm] ...${NC}"
 
 mkdir -p /tmp/mission_logs
+# 待裁判口径确认：以下评分参数仅供记录，任务节点不据此自动判分。
+rosparam load "${WS_DIR}/src/mission_pkg/config/referee_policy.yaml" /referee_policy
 
 xterm $XTERM_OPTS -T "Mission (llm_mission)" \
     -e "bash --login -c '${XTERM_ENV}; source ${WS_DIR}/devel/setup.bash && roslaunch mission_pkg llm_mission.launch 2>&1; echo \"Press Enter to close\"; read; exec bash'" &
