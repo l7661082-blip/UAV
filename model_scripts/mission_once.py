@@ -9,6 +9,7 @@ import sys
 import os
 import re
 import hashlib
+import time
 from transformers import AutoModel, AutoTokenizer
 import torch
 import rospy
@@ -106,6 +107,12 @@ def main():
             rospy.logerr("推理失败，任务未发布: %s", e)
             torch.cuda.empty_cache()
             return
+        deadline = time.monotonic() + 120.0
+        while pub.get_num_connections() == 0 and not rospy.is_shutdown():
+            if time.monotonic() >= deadline:
+                rospy.logerr("120 秒内没有 /mission_command 接收者，任务未发布")
+                return
+            time.sleep(0.2)
         rospy.loginfo("通过校验的命令序列:\n%s", commands)
         pub.publish(String(data=commands))
         rospy.loginfo("指令已发送到 /mission_command")
