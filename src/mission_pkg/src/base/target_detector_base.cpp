@@ -10,11 +10,13 @@
 #include "base/target_detector_base.h"
 
 TargetDetectorBase::TargetDetectorBase(const std::string& name, const NodeConfig& config)
-    : DroneActionNode(name, config), has_new_objects_msg_(false) {
+    : DroneActionNode(name, config), has_new_objects_msg_(false),
+      detection_timeout_(1.0), stale_reported_(false) {
     
     auto nh = mct->getROSHandle();
     std::string det_topic;
     nh->param<std::string>("detect_result_topic", det_topic, "/objects");
+    nh->param<double>("detection_timeout", detection_timeout_, 1.0);
     objs_sub = nh->subscribe(det_topic, 1, &TargetDetectorBase::objsCallback, this);
 }
 
@@ -24,8 +26,11 @@ PortsList TargetDetectorBase::baseProvidedPorts() {
 }
 
 void TargetDetectorBase::objsCallback(const common_msgs::Objects::ConstPtr& msg) {
+    std::lock_guard<std::mutex> lock(objects_mutex_);
     last_objs_ = *msg;
+    last_objects_received_ = ros::Time::now();
     has_new_objects_msg_ = true;
+    stale_reported_ = false;
     // ROS_INFO("11");
 }
 
@@ -37,7 +42,12 @@ NodeStatus TargetDetectorBase::onStart() {
     auto conf_res = getInput<double>("confidence_threshold");
     confidence_threshold = conf_res.value();
 
-    has_new_objects_msg_ = false;
+    {
+        std::lock_guard<std::mutex> lock(objects_mutex_);
+        has_new_objects_msg_ = false;
+        stale_reported_ = false;
+        last_objects_received_ = ros::Time::now();
+    }
     
     ROS_INFO("[%s]: Detecting target: %s, conf_th: %.2f", 
              name().c_str(), target_class.c_str(), confidence_threshold);
@@ -46,16 +56,30 @@ NodeStatus TargetDetectorBase::onStart() {
 }
 
 NodeStatus TargetDetectorBase::onRunning() {
-    // 1. 检查是否有新的感知消息
-    if (!has_new_objects_msg_) {
-        return handleNoDetection();
+    common_msgs::Objects objects;
+    bool has_new = false;
+    bool became_stale = false;
+    {
+        std::lock_guard<std::mutex> lock(objects_mutex_);
+        has_new = has_new_objects_msg_;
+        if (has_new) {
+            objects = last_objs_;
+            has_new_objects_msg_ = false;
+        } else if (!stale_reported_ && detection_timeout_ > 0.0 &&
+                   (ros::Time::now() - last_objects_received_).toSec() > detection_timeout_) {
+            stale_reported_ = true;
+            became_stale = true;
+        }
     }
-    
-    has_new_objects_msg_ = false;  // 标记已消费
+    if (!has_new) {
+        // 控制循环可能快于图像帧率；只在消息真正过期时报告一次丢失。
+        if (became_stale) return handleNoDetection();
+        return handleNoNewData();
+    }
 
     // 2. 在消息中查找特定目标
     common_msgs::Obj target_obj;
-    if (findTargetInObjects(last_objs_, target_obj)) {
+    if (findTargetInObjects(objects, target_obj)) {
         // 3. 找到目标，委托子类处理
 
         return handleDetectedObject(target_obj);

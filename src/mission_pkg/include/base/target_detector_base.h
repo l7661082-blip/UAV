@@ -13,6 +13,7 @@
 
 #include "base/drone_action_node.h"
 #include <common_msgs/Objects.h>
+#include <mutex>
 
 /**
  * @brief 目标检测基类（最小化设计）
@@ -67,6 +68,10 @@ private:
     ros::Subscriber objs_sub;
     common_msgs::Objects last_objs_;
     bool has_new_objects_msg_; // 明确标识是否收到新的物体消息
+    ros::Time last_objects_received_;
+    double detection_timeout_;
+    bool stale_reported_;
+    std::mutex objects_mutex_;
 };
 
 #endif // TARGET_DETECTOR_BASE_H

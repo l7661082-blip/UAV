@@ -3,6 +3,8 @@
     
     <arg name="image_topic" default="/rflysim/sensor2/img_rgb" />
     <arg name="show_debug"  default="false" />
+    <arg name="binary_fallback" default="true" />
+    <arg name="binary_interval" default="3" />
     <arg name="save_dir"    default="" />
     <!-- mock_id: >= 0 时启用 Mock 模式，开启即发布该 ID（-1 = 真实检测）-->
     <arg name="mock_id"     default="-1" />
@@ -11,6 +13,8 @@
         <param name="image_topic"   value="$(arg image_topic)" />
         <param name="dictionary_id" value="16" />  <!-- DICT_ARUCO_ORIGINAL(16), formerly DICT_6X6_250(10) -->
         <param name="show_debug"    value="$(arg show_debug)" />
+        <param name="binary_fallback" value="$(arg binary_fallback)" />
+        <param name="binary_interval" value="$(arg binary_interval)" />
         <param name="save_dir"      value="$(arg save_dir)" />
         <param name="enabled_default" value="false" />  <!-- default off, call /aruco/enable to start -->
     </node>
