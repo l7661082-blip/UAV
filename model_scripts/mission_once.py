@@ -8,11 +8,32 @@
 import sys
 import os
 import re
-import gc
+import hashlib
 from transformers import AutoModel, AutoTokenizer
 import torch
 import rospy
 from std_msgs.msg import String
+
+SIMPLE_COMMANDS = {
+    "takeoff", "cross_frame", "detect_aruco", "return_cross_frame", "land"
+}
+BALLOON_COMMAND = re.compile(r"hit_balloon:(red|purple|blue)\Z")
+COMMAND_BLOCK = re.compile(r"```command[ \t]*\r?\n(.*?)\r?\n```", re.DOTALL)
+
+
+def parse_model_commands(content):
+    """只接受行为树文本入口支持的命令，避免执行残缺任务。"""
+    blocks = COMMAND_BLOCK.findall(content)
+    if len(blocks) != 1:
+        raise ValueError("模型回复必须恰有一个 command 代码块")
+    commands = [line.strip() for line in blocks[0].splitlines() if line.strip()]
+    if not commands:
+        raise ValueError("模型回复的命令列表为空")
+    invalid = [cmd for cmd in commands
+               if cmd not in SIMPLE_COMMANDS and not BALLOON_COMMAND.fullmatch(cmd)]
+    if invalid:
+        raise ValueError("不支持的命令: " + ", ".join(invalid))
+    return "\n".join(commands)
 
 
 def load_model():
@@ -21,7 +42,13 @@ def load_model():
     prompt_path = os.path.join(script_dir, "prompts", "mission_prompt.txt")
     model_dir = os.path.join(script_dir, "FM9G4B-V")
 
-    knowledge_prompt = open(prompt_path, "r", encoding="utf-8").read()
+    with open(prompt_path, "rb") as prompt_file:
+        prompt_bytes = prompt_file.read()
+    knowledge_prompt = prompt_bytes.decode("utf-8")
+    rospy.loginfo("模型脚本: %s", os.path.realpath(__file__))
+    rospy.loginfo("模型目录: %s", os.path.realpath(model_dir))
+    rospy.loginfo("提示词: %s SHA-256=%s", os.path.realpath(prompt_path),
+                  hashlib.sha256(prompt_bytes).hexdigest())
 
     print("[1/3] 加载模型...", flush=True)
     model = AutoModel.from_pretrained(
@@ -39,7 +66,7 @@ def load_model():
         reply += t
     msgs.append({"role": "assistant", "content": [reply]})
 
-    print("[3/3] 模型就绪。\n", flush=True)
+    print("[3/3] 提示词注入完成，模型就绪。\n", flush=True)
     return model, tokenizer, msgs
 
 
@@ -56,43 +83,39 @@ def generate_commands(model, tokenizer, base_msgs, task_description):
         content += t
     print()
 
-    # 推理完成后清理显存
-    gc.collect()
-    torch.cuda.empty_cache()
-
-    # 提取 ```command ... ``` 代码块
-    match = re.search(r"```(.*?)```", content, re.DOTALL)
-    if not match:
-        return None
-    code = match.group(1)
-    if code.startswith("command"):
-        code = code[len("command"):]
-    return code.strip()
+    # 正常推理后保留 CUDA 缓存，避免下一次推理重新分配显存。
+    return parse_model_commands(content)
 
 
 def main():
     rospy.init_node("mission_once", anonymous=True)
     pub = rospy.Publisher("/mission_command", String, queue_size=10)
-    rospy.sleep(1.0)
+    ready_pub = rospy.Publisher("/mission_llm_ready", String, queue_size=1, latch=True)
 
     model, tokenizer, base_msgs = load_model()
+    ready_pub.publish(String(data="READY"))
+    rospy.loginfo("/mission_llm_ready: READY")
+
+    def publish_task(task):
+        try:
+            commands = generate_commands(model, tokenizer, base_msgs, task)
+        except ValueError as e:
+            rospy.logerr("拒绝模型输出，任务未发布: %s", e)
+            return
+        except RuntimeError as e:
+            rospy.logerr("推理失败，任务未发布: %s", e)
+            torch.cuda.empty_cache()
+            return
+        rospy.loginfo("通过校验的命令序列:\n%s", commands)
+        pub.publish(String(data=commands))
+        rospy.loginfo("指令已发送到 /mission_command")
 
     # 如果命令行有参数，先执行一次
     if len(sys.argv) > 1:
         task = " ".join(sys.argv[1:])
         print(f"\n[任务] {task}")
         print("=" * 60)
-        try:
-            commands = generate_commands(model, tokenizer, base_msgs, task)
-            if commands:
-                print(f"\n[生成的指令序列]\n{commands}\n")
-                pub.publish(String(data=commands))
-                rospy.loginfo("指令已发送到 /mission_command")
-            else:
-                print("\n[错误] 大模型未返回有效指令。")
-        except RuntimeError as e:
-            print(f"\n[错误] 推理失败: {e}")
-            torch.cuda.empty_cache()
+        publish_task(task)
 
     # 持续等待用户输入（方便反复调试）
     while not rospy.is_shutdown():
@@ -112,19 +135,7 @@ def main():
         print(f"\n[任务] {task}")
         print("=" * 60)
 
-        try:
-            commands = generate_commands(model, tokenizer, base_msgs, task)
-        except RuntimeError as e:
-            print(f"\n[错误] 推理失败: {e}")
-            torch.cuda.empty_cache()
-            continue
-        if not commands:
-            print("\n[错误] 大模型未返回有效指令。")
-            continue
-
-        print(f"\n[生成的指令序列]\n{commands}\n")
-        pub.publish(String(data=commands))
-        rospy.loginfo("指令已发送到 /mission_command")
+        publish_task(task)
 
 
 if __name__ == "__main__":
