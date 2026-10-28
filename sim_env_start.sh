@@ -43,6 +43,16 @@ XTERM_ENV="export LANG=en_US.UTF-8; export LC_ALL=en_US.UTF-8; export TERM=xterm
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WS_DIR="${SCRIPT_DIR}"
 
+startup_abort() {
+    echo -e "${RED}[ERROR] 启动检查失败，停止已启动的后台进程${NC}"
+    for pid in "${LLM_PID:-}" "${DET_PID:-}" "${SENSOR_PID:-}" \
+               "${MAP_PID:-}" "${CLOUD_PID:-}" "${ARUCO_PID:-}" \
+               "${EGO_PID:-}" "${ROSCORE_PID:-}"; do
+        if [ -n "$pid" ]; then kill "$pid" 2>/dev/null || true; fi
+    done
+    exit 1
+}
+
 # ========== 配置 xterm 剪贴板粘贴 (Ctrl+Shift+V / Shift+Insert) ==========
 XRESOURCES_FILE="/tmp/.xterm_clipboard_resources"
 cat > "${XRESOURCES_FILE}" << 'XEOF'
@@ -117,14 +127,6 @@ xterm $XTERM_OPTS -T "LLM Mission (mission_once)" \
 LLM_PID=$!
 echo -e "${GREEN}      LLM PID: ${LLM_PID}${NC}"
 
-# /mission_llm_ready 仅在权重加载及提示词注入完成后由模型脚本发布。
-echo -e "${YELLOW}      等待大模型就绪，最长 60s ...${NC}"
-if ! timeout 60s rostopic echo -n 1 /mission_llm_ready 2>/dev/null | grep -q 'READY'; then
-    echo -e "${RED}[ERROR] 大模型 60s 内未就绪，停止启动任务节点${NC}"
-    exit 1
-fi
-echo -e "${GREEN}[OK] 大模型与提示词已就绪${NC}"
-
 # =====================================================================
 # 2. 启动 YOLO 目标检测（独立 xterm，模型加载较慢，先启动）
 # =====================================================================
@@ -135,6 +137,14 @@ xterm $XTERM_OPTS -T "YOLO Detection" \
     -e "bash --login -c '${XTERM_ENV}; source ${WS_DIR}/devel/setup.bash && roslaunch object_det detection_color.launch 2>&1; echo \"Press Enter to close\"; read; exec bash'" &
 DET_PID=$!
 echo -e "${GREEN}      PID: ${DET_PID}${NC}"
+
+# 模型与 YOLO 并行预热；提示词注入成功后才视为 LLM 可用。
+echo -e "${YELLOW}      等待大模型就绪，最长 60s ...${NC}"
+if ! timeout 60s rostopic echo -n 1 /mission_llm_ready 2>/dev/null | grep -q 'READY'; then
+    echo -e "${RED}[ERROR] 大模型 60s 内未就绪，停止启动任务节点${NC}"
+    startup_abort
+fi
+echo -e "${GREEN}[OK] 大模型与提示词已就绪${NC}"
 
 # =====================================================================
 # 3. 启动 MAVROS（当前已注释）
@@ -219,7 +229,7 @@ echo ""
 echo -e "${YELLOW}等待 YOLO 模型加载完成 ...${NC}"
 if ! timeout 120s rostopic echo -n 1 /objects >/dev/null 2>&1; then
     echo -e "${RED}[ERROR] 120s 内未收到 /objects 检测结果，请检查 YOLO 和图像话题${NC}"
-    exit 1
+    startup_abort
 fi
 echo -e "${GREEN}[OK] /objects 已收到检测结果${NC}"
 

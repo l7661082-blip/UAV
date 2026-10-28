@@ -97,6 +97,7 @@ while [ "$squareNum" -le "$TOTOAL_COPTER" ]; do
 done
 
 ld_path=$LD_LIBRARY_PATH
+pkill -x QGroundControl || true
 # 正式运行默认不启动 QGC；调试时设置 ENABLE_QGC=1。
 if [ "${ENABLE_QGC:-0}" = "1" ]; then
     echo Start QGroundControl
