@@ -1,6 +1,7 @@
 """Offline tests for ArUco fallback order and uneven lighting."""
 
 import ast
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -58,6 +59,19 @@ class ArucoFallbackTest(unittest.TestCase):
         node.clahe.apply.assert_called_once_with("gray")
         self.assertEqual(cv2.aruco.detectMarkers.call_count, 3)
 
+    def test_clahe_threshold_is_last_fallback(self):
+        cv2 = mock.Mock()
+        cv2.aruco.detectMarkers.side_effect = [
+            ([], None, []), ([], None, []), ([], None, []),
+            ("corners", "ids", [])]
+        node = self.make_node()
+        node.frame_index = 2
+        node.clahe.apply.return_value = "equalized"
+        detect = load_detect(cv2, mock.Mock())
+        self.assertEqual(detect(node, "gray")[1], "ids")
+        self.assertEqual(cv2.adaptiveThreshold.call_count, 2)
+        self.assertEqual(cv2.aruco.detectMarkers.call_count, 4)
+
     def test_uneven_lighting_marker(self):
         try:
             import cv2
@@ -82,15 +96,26 @@ class ArucoFallbackTest(unittest.TestCase):
             params = cv2.aruco.DetectorParameters()
             detect_markers = lambda image, dictionary, parameters: (
                 cv2.aruco.ArucoDetector(dictionary, parameters).detectMarkers(image))
-        compat_cv2 = mock.Mock(wraps=cv2)
-        compat_cv2.aruco = mock.Mock(wraps=cv2.aruco)
-        compat_cv2.aruco.detectMarkers = detect_markers
+        attempts = []
+
+        def detect_after_failed_original_and_binary(image, dictionary, parameters):
+            attempts.append(image)
+            if len(attempts) <= 2:
+                return [], None, []
+            return detect_markers(image, dictionary, parameters)
+
+        compat_cv2 = types.SimpleNamespace(
+            aruco=types.SimpleNamespace(detectMarkers=detect_after_failed_original_and_binary),
+            adaptiveThreshold=cv2.adaptiveThreshold,
+            ADAPTIVE_THRESH_GAUSSIAN_C=cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            THRESH_BINARY=cv2.THRESH_BINARY)
         node = self.make_node()
         node.frame_index = 2
         node.aruco_dict = dictionary
         node.params = params
         node.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         corners, ids, _ = load_detect(compat_cv2, mock.Mock())(node, shaded)
+        self.assertGreaterEqual(len(attempts), 3)
         self.assertIsNotNone(ids)
         self.assertEqual(int(ids[0][0]), 42)
 
