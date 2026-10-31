@@ -27,8 +27,18 @@ def parse_model_commands(content):
     # 模型流可能只用 CR 分隔行，先统一整个回复以便定位代码块。
     content = content.replace("\r\n", "\n").replace("\r", "\n")
     blocks = FENCED_BLOCK.findall(content)
-    if len(blocks) != 1:
-        raise ValueError("模型回复必须恰有一个代码块")
+    if len(blocks) > 1:
+        raise ValueError("模型回复包含多个代码块，疑似复述提示词示例，拒绝执行")
+    if not blocks:
+        # 无围栏降级：只认"整行去掉空白后恰好是白名单命令"的行，
+        # 中文解释行不可能整行等于命令名，不会误入。
+        no_fence = [line.strip() for line in content.split("\n")
+                    if line.strip() in SIMPLE_COMMANDS
+                    or BALLOON_COMMAND.fullmatch(line.strip())]
+        if not no_fence:
+            raise ValueError("模型回复中既无代码块也无白名单命令行")
+        rospy.logwarn("模型回复未使用代码块，按整行白名单降级提取")
+        return "\n".join(no_fence)
     command_blocks = [code for label, code in blocks if label.strip() == "command"]
     # 多块回复已拒绝；单块时优先取 command，缺失标签才降级。
     if command_blocks:
@@ -98,7 +108,11 @@ def generate_commands(model, tokenizer, base_msgs, task_description):
     print()
 
     # 正常推理后保留 CUDA 缓存，避免下一次推理重新分配显存。
-    return parse_model_commands(content)
+    try:
+        return parse_model_commands(content)
+    except ValueError as e:
+        # 拒绝时把原始回复带回日志，方便定位模型到底输出了什么格式
+        raise ValueError(f"{e}；模型原始回复(前300字符)={content[:300]!r}") from None
 
 
 def main():
