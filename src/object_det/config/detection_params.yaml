@@ -34,6 +34,10 @@ topics:
 
 # 可视化配置
 visualization:
-  show_window: true                           # 显示检测窗口（Docker 容器有桌面，可以正常显示）
+  show_window: true                           # 单独 roslaunch 时可查看；常规启动脚本会覆盖为 false
   window_name: "Object Detection"             # 窗口名称
   max_fps: 5.0                                # 只限制窗口刷新；检测和 /objects 不限速
+
+# YOLO 推理限帧；0 表示不限制，跳过的图像不产生 /objects 消息
+inference:
+  max_fps: 5.0

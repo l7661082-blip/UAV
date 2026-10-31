@@ -20,6 +20,7 @@ Date: 2026-03-17
 
 import os
 import sys
+import time
 import cv2
 import numpy as np
 import rospy
@@ -239,6 +240,11 @@ class ObjectDetectionColorNode:
         self.visualization_max_fps = max(
             0.0, float(rospy.get_param('/object_detection/visualization/max_fps', 5.0)))
         self._last_visualization_time = 0.0
+        self.inference_max_fps = max(
+            0.0, float(rospy.get_param('/object_detection/inference/max_fps', 5.0)))
+        self._last_inference_start = None
+        self._last_detection_publish = None
+        self._max_publish_gap = 0.0
         self._first_image_received = False
         self._cached_balloon_centers = {}
 
@@ -325,9 +331,7 @@ class ObjectDetectionColorNode:
     # ---------- 主回调 ----------
 
     def _image_callback(self, msg: Image):
-        import time
-        start_time = time.time()
-        self._cached_balloon_centers.clear()
+        start_time = time.monotonic()
 
         if not self._first_image_received:
             rospy.loginfo(f"Received first image! Size: {msg.width}x{msg.height}")
@@ -335,6 +339,13 @@ class ObjectDetectionColorNode:
 
         if not self._detection_enabled:
             return
+
+        # 先限帧再解码和推理；跳过的图像不能伪装成一次空检测。
+        if (self.inference_max_fps > 0 and self._last_inference_start is not None
+                and start_time - self._last_inference_start < 1.0 / self.inference_max_fps):
+            return
+        self._last_inference_start = start_time
+        self._cached_balloon_centers.clear()
 
         # 转换图像（使用纯 NumPy，避免 Boost.Python 版本不兼容问题）
         try:
@@ -355,10 +366,19 @@ class ObjectDetectionColorNode:
         objects_msg = self._process_detections(
             detections if detections is not None else [], image_bgr, msg.header)
         self.objects_pub.publish(objects_msg)
+        publish_time = time.monotonic()
+        if self._last_detection_publish is not None:
+            gap = publish_time - self._last_detection_publish
+            self._max_publish_gap = max(self._max_publish_gap, gap)
+            if gap >= 0.8:
+                rospy.logwarn_throttle(2.0, "YOLO /objects gap %.3fs approaches 1s servo timeout", gap)
+        self._last_detection_publish = publish_time
         if detections is not None and len(detections) > 0:
             rospy.logdebug(f"Detected {len(detections)} objects")
 
-        processing_time_ms = (time.time() - start_time) * 1000.0
+        processing_time_ms = (publish_time - start_time) * 1000.0
+        rospy.loginfo_throttle(10.0, "YOLO inference+publish %.1fms, max /objects gap %.3fs",
+                               processing_time_ms, self._max_publish_gap)
 
         if self.show_visualization:
             now = time.monotonic()

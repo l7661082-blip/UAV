@@ -77,6 +77,7 @@ NodeStatus VisualServo::onStart() {
     // 初始化状态机
     current_state_ = APPROACHING;  // 直接进入边飞边对齐模式（气球是移动目标）
     has_ever_received_data_ = false;
+    last_target_ = PixelTarget();
     max_area_ratio_ = 0.0;
     align_stable_frames_ = 0;
     
@@ -276,7 +277,8 @@ void VisualServo::updateTargetData() {
     if (!target_res) return;
 
     PixelTarget current_target = target_res.value();
-    if (current_target.is_detected) {
+    // 同一条黑板数据会被多个 BT tick 读取，只有新检测才刷新 1 秒超时。
+    if (current_target.is_detected && current_target.timestamp > last_target_.timestamp) {
         last_target_ = current_target;
         last_valid_detection_time_ = ros::Time::now(); 
         has_ever_received_data_ = true;
