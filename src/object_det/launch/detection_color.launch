@@ -5,9 +5,11 @@
     
     <!-- 参数：配置文件路径 -->
     <arg name="config_file" default="$(find object_det)/config/detection_params.yaml" />
+    <arg name="show_window" default="false" />
     
     <!-- 加载参数文件到参数服务器 -->
     <rosparam command="load" file="$(arg config_file)" ns="object_detection" />
+    <param name="/object_detection/visualization/show_window" value="$(arg show_window)" type="bool" />
     
     <!-- 启动检测 + 颜色分类节点（通过 conda wrapper 使用 GPU 版 PyTorch） -->
     <node name="object_detection_node" pkg="object_det" type="det_color_conda.sh" output="screen">

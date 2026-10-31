@@ -39,6 +39,12 @@ NC='\033[0m'
 XTERM_OPTS="-en UTF-8 -u8 -lc -sl 10000 -bg black -fg white -fa 'Monospace' -fs 12"
 XTERM_ENV="export LANG=en_US.UTF-8; export LC_ALL=en_US.UTF-8; export TERM=xterm-256color; export PYTHONIOENCODING=utf-8; unset PROMPT_COMMAND"
 
+# 常规运行关闭调试窗口；需要观察时单独设置为 true。
+SHOW_YOLO_WINDOW="${SHOW_YOLO_WINDOW:-false}"
+SHOW_ARUCO_DEBUG="${SHOW_ARUCO_DEBUG:-false}"
+SHOW_EGO_TERMINAL="${SHOW_EGO_TERMINAL:-false}"
+SHOW_EGO_RVIZ="${SHOW_EGO_RVIZ:-false}"
+
 # 获取脚本所在目录（catkin_ws）
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WS_DIR="${SCRIPT_DIR}"
@@ -134,7 +140,7 @@ echo ""
 echo -e "${GREEN}[2/11] 启动 YOLO 目标检测 + 气球颜色分类 [独立 xterm] ...${NC}"
 
 xterm $XTERM_OPTS -T "YOLO Detection" \
-    -e "bash --login -c '${XTERM_ENV}; source ${WS_DIR}/devel/setup.bash && roslaunch object_det detection_color.launch 2>&1; echo \"Press Enter to close\"; read; exec bash'" &
+    -e "bash --login -c '${XTERM_ENV}; source ${WS_DIR}/devel/setup.bash && roslaunch object_det detection_color.launch show_window:=${SHOW_YOLO_WINDOW} 2>&1; echo \"Press Enter to close\"; read; exec bash'" &
 DET_PID=$!
 echo -e "${GREEN}      PID: ${DET_PID}${NC}"
 
@@ -203,7 +209,7 @@ echo ""
 echo -e "${GREEN}[7/11] 启动 ArUco 识别节点 [独立 xterm] ...${NC}"
 
 xterm $XTERM_OPTS -T "ArUco Detect" \
-    -e "bash --login -c '${XTERM_ENV}; source ${WS_DIR}/devel/setup.bash && roslaunch mission_pkg aruco_detect.launch show_debug:=true 2>&1; echo \"Press Enter to close\"; read; exec bash'" &
+    -e "bash --login -c '${XTERM_ENV}; source ${WS_DIR}/devel/setup.bash && roslaunch mission_pkg aruco_detect.launch show_debug:=${SHOW_ARUCO_DEBUG} 2>&1; echo \"Press Enter to close\"; read; exec bash'" &
 ARUCO_PID=$!
 echo -e "${GREEN}      PID: ${ARUCO_PID}${NC}"
 
@@ -215,8 +221,14 @@ sleep 2
 echo ""
 echo -e "${GREEN}[8/11] 启动 Ego-Planner [独立 xterm] ...${NC}"
 
-xterm $XTERM_OPTS -T "Ego-Planner" \
-    -e "bash --login -c '${XTERM_ENV}; source ${WS_DIR}/devel/setup.bash && roslaunch ego_planner FS-J310_ego-planner.launch 2>&1; echo \"Press Enter to close\"; read; exec bash'" &
+mkdir -p /tmp/mission_logs
+if [ "${SHOW_EGO_TERMINAL}" = "true" ]; then
+    xterm $XTERM_OPTS -T "Ego-Planner" \
+        -e "bash --login -c '${XTERM_ENV}; source ${WS_DIR}/devel/setup.bash && roslaunch ego_planner FS-J310_ego-planner.launch show_rviz:=${SHOW_EGO_RVIZ} 2>&1; echo \"Press Enter to close\"; read; exec bash'" &
+else
+    roslaunch ego_planner FS-J310_ego-planner.launch show_rviz:=${SHOW_EGO_RVIZ} \
+        > /tmp/mission_logs/ego_planner.log 2>&1 &
+fi
 EGO_PID=$!
 echo -e "${GREEN}      PID: ${EGO_PID}${NC}"
 
