@@ -39,7 +39,10 @@ def parse_model_commands(content):
     code = code.replace("\r\n", "\n").replace("\r", "\n").strip()
     if not code:
         raise ValueError("模型回复的命令列表为空")
-    commands = [line.strip() for line in code.split("\n")]
+    # 空行不是命令，必须丢弃：模型常在命令块里插入空行，若当命令校验会误拒整段任务
+    commands = [line.strip() for line in code.split("\n") if line.strip()]
+    if not commands:
+        raise ValueError("模型回复的命令列表为空")
     invalid = [cmd for cmd in commands
                if cmd not in SIMPLE_COMMANDS and not BALLOON_COMMAND.fullmatch(cmd)]
     if invalid:
