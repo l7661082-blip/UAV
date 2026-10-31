@@ -24,10 +24,13 @@ COMMAND_BLOCK = re.compile(r"```command[ \t]*\r?\n(.*?)\r?\n```", re.DOTALL)
 
 def parse_model_commands(content):
     """只接受行为树文本入口支持的命令，避免执行残缺任务。"""
+    # 模型流可能只用 CR 分隔行，先统一整个回复以便定位代码块。
+    content = content.replace("\r\n", "\n").replace("\r", "\n")
     blocks = COMMAND_BLOCK.findall(content)
     if len(blocks) != 1:
         raise ValueError("模型回复必须恰有一个 command 代码块")
-    commands = [line.strip() for line in blocks[0].splitlines() if line.strip()]
+    code = blocks[0].replace("\r\n", "\n").replace("\r", "\n").strip()
+    commands = [line.strip() for line in code.split("\n") if line.strip()]
     if not commands:
         raise ValueError("模型回复的命令列表为空")
     invalid = [cmd for cmd in commands
