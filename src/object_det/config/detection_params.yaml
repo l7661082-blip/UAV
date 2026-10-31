@@ -36,3 +36,4 @@ topics:
 visualization:
   show_window: true                           # 显示检测窗口（Docker 容器有桌面，可以正常显示）
   window_name: "Object Detection"             # 窗口名称
+  max_fps: 5.0                                # 只限制窗口刷新；检测和 /objects 不限速

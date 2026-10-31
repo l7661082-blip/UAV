@@ -96,14 +96,18 @@ while [ "$squareNum" -le "$TOTOAL_COPTER" ]; do
     sqrtNum=$((sqrtNum + 1))
 done
 
-pkill -x QGroundControl || true
-echo Start QGroundControl
-
 ld_path=$LD_LIBRARY_PATH
-export LD_LIBRARY_PATH=/opt/gstreamer/lib/x86_64-linux-gnu:$PSP_PATH/QGroundControl/squashfs-root/Qt/libs:$ld_path
-cd ${PSP_PATH}/QGroundControl/squashfs-root
-${CMDPre} ./AppRun >/dev/null 2>&1 &
-sleep 1
+pkill -x QGroundControl || true
+# 正式运行默认不启动 QGC；调试时设置 ENABLE_QGC=1。
+if [ "${ENABLE_QGC:-0}" = "1" ]; then
+    echo Start QGroundControl
+    export LD_LIBRARY_PATH=/opt/gstreamer/lib/x86_64-linux-gnu:$PSP_PATH/QGroundControl/squashfs-root/Qt/libs:$ld_path
+    cd "${PSP_PATH}/QGroundControl/squashfs-root" || exit 1
+    ${CMDPre} ./AppRun >/dev/null 2>&1 &
+    sleep 1
+else
+    echo Skip QGroundControl
+fi
 
 pkill -x RflySim3D || true
 echo Start RflySim3D

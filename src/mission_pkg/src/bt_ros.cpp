@@ -22,6 +22,7 @@
 #include <sstream>
 #include <mutex>
 #include <atomic>
+#include <algorithm>
 
 #include "nlohmann_json.hpp"
 #include "mavros_cnt.h"
@@ -203,7 +204,7 @@ bool generateNodeModelXML(const BehaviorTreeFactory& factory, const std::string&
  *   cross_frame
  *   detect_aruco
  *   return_cross_frame
- *   hit_balloon:区域:颜色       (例: hit_balloon:A:red)
+ *   hit_balloon:red / hit_balloon:purple / hit_balloon:blue
  *   land
  */
 std::string commandToXmlNode(const std::string& command) {
@@ -298,15 +299,9 @@ std::string commandToXmlNode(const std::string& command) {
     }
     
     // ---- hit_balloon:颜色 ----
-    if (cmd.rfind("hit_balloon", 0) == 0) {
-        std::string color = "red";
-        std::vector<std::string> parts;
-        std::istringstream iss(cmd);
-        std::string part;
-        while (std::getline(iss, part, ':')) {
-            parts.push_back(part);
-        }
-        if (parts.size() >= 2) color = parts[1];
+    if (cmd == "hit_balloon:red" || cmd == "hit_balloon:purple" ||
+        cmd == "hit_balloon:blue") {
+        std::string color = cmd.substr(std::string("hit_balloon:").size());
         
         std::string zone;
         if (!nh.getParam("balloon_color_" + color, zone)) {
@@ -401,19 +396,17 @@ std::string buildXmlFromCommands(const std::vector<std::string>& commands) {
 std::vector<std::string> parseCommands(const std::string& raw) {
     std::vector<std::string> commands;
     
-    // 尝试 JSON 解析
-    try {
-        auto j = json::parse(raw);
-        if (j.contains("commands") && j["commands"].is_array()) {
-            for (const auto& item : j["commands"]) {
-                if (item.is_string()) {
-                    commands.push_back(item.get<std::string>());
-                }
-            }
-            return commands;
+    // 有效 JSON 只接受字符串数组；格式错误时不退回文本模式误执行。
+    auto j = json::parse(raw, nullptr, false);
+    if (!j.is_discarded()) {
+        if (!j.is_object() || !j.contains("commands") || !j["commands"].is_array()) {
+            return {};
         }
-    } catch (...) {
-        // 不是 JSON，按纯文本解析
+        for (const auto& item : j["commands"]) {
+            if (!item.is_string()) return {};
+            commands.push_back(item.get<std::string>());
+        }
+        return commands;
     }
     
     // 纯文本模式：按行分割
@@ -429,6 +422,13 @@ std::vector<std::string> parseCommands(const std::string& raw) {
     }
     
     return commands;
+}
+
+bool isSupportedCommand(const std::string& cmd) {
+    return cmd == "takeoff" || cmd == "cross_frame" ||
+           cmd == "detect_aruco" || cmd == "return_cross_frame" ||
+           cmd == "land" || cmd == "hit_balloon:red" ||
+           cmd == "hit_balloon:purple" || cmd == "hit_balloon:blue";
 }
 
 //==============================================================================
@@ -471,6 +471,20 @@ void llmCommandCallback(const std_msgs::String::ConstPtr& msg) {
         }
         return;
     }
+    for (const auto& cmd : commands) {
+        if (!isSupportedCommand(cmd)) {
+            ROS_ERROR("Unsupported LLM command: '%s'; rejecting whole task.", cmd.c_str());
+            if (g_result_pub_ptr) {
+                std_msgs::String result;
+                result.data = "ERROR:INVALID_COMMAND";
+                g_result_pub_ptr->publish(result);
+            }
+            return;
+        }
+    }
+    const bool has_balloon_task = std::any_of(
+        commands.begin(), commands.end(),
+        [](const std::string& cmd) { return cmd.rfind("hit_balloon:", 0) == 0; });
     
     ROS_INFO("Parsed %zu command(s):", commands.size());
     for (size_t i = 0; i < commands.size(); ++i) {
@@ -513,7 +527,10 @@ void llmCommandCallback(const std_msgs::String::ConstPtr& msg) {
         
         if (g_result_pub_ptr) {
             std_msgs::String result;
-            result.data = (status == NodeStatus::SUCCESS) ? "SUCCESS" : "FAILURE";
+            // 气球阶段现有 ForceSuccess 会吞掉超时/失败；不把流程完成冒充扎破成功。
+            result.data = (status == NodeStatus::SUCCESS)
+                ? (has_balloon_task ? "FLOW_COMPLETED_BALLOON_UNVERIFIED" : "SUCCESS")
+                : "FAILURE";
             g_result_pub_ptr->publish(result);
         }
         

@@ -77,6 +77,9 @@ class ArucoDetectNode:
         self.show_debug   = rospy.get_param("~show_debug", False)
         self.save_dir     = rospy.get_param("~save_dir", "")
         enabled_default   = rospy.get_param("~enabled_default", False)
+        self.binary_fallback = rospy.get_param("~binary_fallback", True)
+        self.binary_interval = max(1, int(rospy.get_param("~binary_interval", 3)))
+        self.frame_index = 0
 
         # --- ArUco detector ---
         aruco_dict = cv2.aruco.getPredefinedDictionary(dict_id)
@@ -141,9 +144,18 @@ class ArucoDetectNode:
 
     # ------------------------------------------------------------------ detection
     def _detect(self, gray):
-        """Single detectMarkers call on raw grayscale -- no preprocessing."""
+        """优先用原始灰度图；失败时低频二值化重试。"""
         corners, ids, rejected = cv2.aruco.detectMarkers(
             gray, self.aruco_dict, parameters=self.params)
+        self.frame_index += 1
+        if ids is None and self.binary_fallback and self.frame_index % self.binary_interval == 0:
+            binary = cv2.adaptiveThreshold(
+                gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY, 31, 7)
+            retry_corners, retry_ids, retry_rejected = cv2.aruco.detectMarkers(
+                binary, self.aruco_dict, parameters=self.params)
+            if retry_ids is not None:
+                return retry_corners, retry_ids, retry_rejected
         return corners, ids, rejected
 
     # ------------------------------------------------------------------ image cb

@@ -20,7 +20,8 @@
     <param name="tolerance" value="0.15" type="double"/>
     <param name="yaw_tolerance" value="0.15" type="double"/>
 
-    <!-- 安全边界参数 -->
+    <!-- 安全边界参数：x/y 为当前仿真值；待实测四边界 odom 坐标后再调整。 -->
+    <!-- 待测参数：场地原点、四边界坐标、机体半径和安全余量。 -->
     <param name="safety/enabled" value="true" type="bool"/>
     <param name="safety/x_min" value="-1.0" type="double"/>
     <param name="safety/x_max" value="6.0" type="double"/>

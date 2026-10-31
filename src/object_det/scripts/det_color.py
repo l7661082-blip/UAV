@@ -236,6 +236,9 @@ class ObjectDetectionColorNode:
         # 控制标志
         self._detection_enabled = True
         self.show_visualization = rospy.get_param('/object_detection/visualization/show_window', False)
+        self.visualization_max_fps = max(
+            0.0, float(rospy.get_param('/object_detection/visualization/max_fps', 5.0)))
+        self._last_visualization_time = 0.0
         self._first_image_received = False
         self._cached_balloon_centers = {}
 
@@ -348,15 +351,21 @@ class ObjectDetectionColorNode:
         # YOLO 检测
         detections = self.detector.predict(image_rgb)
 
+        # 每帧发布（包括空检测），让启动检查和跟踪器获得真实的图像心跳。
+        objects_msg = self._process_detections(
+            detections if detections is not None else [], image_bgr, msg.header)
+        self.objects_pub.publish(objects_msg)
         if detections is not None and len(detections) > 0:
-            objects_msg = self._process_detections(detections, image_bgr, msg.header)
-            self.objects_pub.publish(objects_msg)
             rospy.logdebug(f"Detected {len(detections)} objects")
 
         processing_time_ms = (time.time() - start_time) * 1000.0
 
         if self.show_visualization:
-            self._visualize(image_bgr, detections, processing_time_ms)
+            now = time.monotonic()
+            if (self.visualization_max_fps == 0 or
+                    now - self._last_visualization_time >= 1.0 / self.visualization_max_fps):
+                self._visualize(image_bgr, detections, processing_time_ms)
+                self._last_visualization_time = now
 
     # ---------- 处理检测结果（核心改动在这里） ----------
 
