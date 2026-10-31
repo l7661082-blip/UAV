@@ -79,6 +79,13 @@ class ArucoDetectNode:
         enabled_default   = rospy.get_param("~enabled_default", False)
         self.binary_fallback = rospy.get_param("~binary_fallback", True)
         self.binary_interval = max(1, int(rospy.get_param("~binary_interval", 3)))
+        self.binary_block_size = max(3, int(rospy.get_param("~binary_block_size", 31)) | 1)
+        self.binary_c = float(rospy.get_param("~binary_c", 7))
+        self.clahe_fallback = rospy.get_param("~clahe_fallback", True)
+        clahe_clip = max(0.1, float(rospy.get_param("~clahe_clip_limit", 2.0)))
+        clahe_tiles = max(1, int(rospy.get_param("~clahe_tile_size", 8)))
+        self.clahe = cv2.createCLAHE(
+            clipLimit=clahe_clip, tileGridSize=(clahe_tiles, clahe_tiles))
         self.frame_index = 0
 
         # --- ArUco detector ---
@@ -144,17 +151,38 @@ class ArucoDetectNode:
 
     # ------------------------------------------------------------------ detection
     def _detect(self, gray):
-        """优先用原始灰度图；失败时低频二值化重试。"""
+        """优先原图；失败时低频尝试二值化和局部光照补偿。"""
         corners, ids, rejected = cv2.aruco.detectMarkers(
             gray, self.aruco_dict, parameters=self.params)
         self.frame_index += 1
-        if ids is None and self.binary_fallback and self.frame_index % self.binary_interval == 0:
+        if ids is not None or self.frame_index % self.binary_interval != 0:
+            return corners, ids, rejected
+
+        if self.binary_fallback:
             binary = cv2.adaptiveThreshold(
                 gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                cv2.THRESH_BINARY, 31, 7)
+                cv2.THRESH_BINARY, self.binary_block_size, self.binary_c)
             retry_corners, retry_ids, retry_rejected = cv2.aruco.detectMarkers(
                 binary, self.aruco_dict, parameters=self.params)
             if retry_ids is not None:
+                rospy.loginfo("[ArucoDetectNode] Marker recovered by adaptive threshold")
+                return retry_corners, retry_ids, retry_rejected
+
+        if self.clahe_fallback:
+            # CLAHE 只在前两级失败时运行，补偿逆光和局部阴影。
+            equalized = self.clahe.apply(gray)
+            retry_corners, retry_ids, retry_rejected = cv2.aruco.detectMarkers(
+                equalized, self.aruco_dict, parameters=self.params)
+            if retry_ids is not None:
+                rospy.loginfo("[ArucoDetectNode] Marker recovered by CLAHE")
+                return retry_corners, retry_ids, retry_rejected
+            binary = cv2.adaptiveThreshold(
+                equalized, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY, self.binary_block_size, self.binary_c)
+            retry_corners, retry_ids, retry_rejected = cv2.aruco.detectMarkers(
+                binary, self.aruco_dict, parameters=self.params)
+            if retry_ids is not None:
+                rospy.loginfo("[ArucoDetectNode] Marker recovered by CLAHE and threshold")
                 return retry_corners, retry_ids, retry_rejected
         return corners, ids, rejected
 

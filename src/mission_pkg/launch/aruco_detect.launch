@@ -5,6 +5,11 @@
     <arg name="show_debug"  default="false" />
     <arg name="binary_fallback" default="true" />
     <arg name="binary_interval" default="3" />
+    <arg name="binary_block_size" default="31" />
+    <arg name="binary_c" default="7" />
+    <arg name="clahe_fallback" default="true" />
+    <arg name="clahe_clip_limit" default="2.0" />
+    <arg name="clahe_tile_size" default="8" />
     <arg name="save_dir"    default="" />
     <!-- mock_id: >= 0 时启用 Mock 模式，开启即发布该 ID（-1 = 真实检测）-->
     <arg name="mock_id"     default="-1" />
@@ -15,6 +20,11 @@
         <param name="show_debug"    value="$(arg show_debug)" />
         <param name="binary_fallback" value="$(arg binary_fallback)" />
         <param name="binary_interval" value="$(arg binary_interval)" />
+        <param name="binary_block_size" value="$(arg binary_block_size)" />
+        <param name="binary_c" value="$(arg binary_c)" />
+        <param name="clahe_fallback" value="$(arg clahe_fallback)" />
+        <param name="clahe_clip_limit" value="$(arg clahe_clip_limit)" />
+        <param name="clahe_tile_size" value="$(arg clahe_tile_size)" />
         <param name="save_dir"      value="$(arg save_dir)" />
         <param name="enabled_default" value="false" />  <!-- default off, call /aruco/enable to start -->
     </node>
