@@ -9,6 +9,7 @@
  ******************************************************************************/
 #include "nodes/action/planning_control.h"
 #include "utils/pose_utils.h"
+#include "utils/flight_boundary.h"
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
@@ -26,7 +27,7 @@ PlanningControl::PlanningControl(const std::string& name, const NodeConfig& conf
 
 PortsList PlanningControl::providedPorts() {
     return { InputPort<Position3D>("goal", "目标点(x;y;z)"),
-             InputPort<double>("offset_z", 0.0, "相对于目标的Z轴偏移(随飞机航向)"),
+             InputPort<double>("offset_z", 0.0, "沿当前航向的水平目标偏移，历史端口名"),
              InputPort<double>("tolerance", "到达容差"),
              InputPort<bool>("control_yaw", false, "是否控制偏航角"),
              OutputPort<Position3D>("final_position", "到达的最终位置(x;y;z)") };
@@ -50,6 +51,24 @@ void PlanningControl::initializeTarget(const Position3D& pos) {
     double target_y = target_pos_.y + offset_z * sin(yaw);
     double target_z = target_pos_.z;
 
+    FlightBoundary boundary;
+    if (!FlightBoundary::load(boundary)) {
+        target_initialized = false;
+        sendHoverCommand();
+        return;
+    }
+    geometry_msgs::Point bounded_goal;
+    bounded_goal.x = target_x;
+    bounded_goal.y = target_y;
+    bounded_goal.z = target_z;
+    if (!boundary.clamp(bounded_goal, name())) {
+        target_initialized = false;
+        sendHoverCommand();
+        return;
+    }
+    target_x = bounded_goal.x;
+    target_y = bounded_goal.y;
+
     // 向规划器发送目标（都使用 ENU，直接发送）
     geometry_msgs::PoseStamped ps;
     ps.header.stamp = ros::Time::now();
@@ -65,7 +84,7 @@ void PlanningControl::initializeTarget(const Position3D& pos) {
     planner_goal_pub.publish(ps);
     has_planner_cmd = false;
 
-    ROS_ERROR("[%s]: >>> NED goal to ego=(%.2f, %.2f, %.2f), yaw=%.2f, offset=%.2f <<<",
+    ROS_INFO("[%s]: ENU goal to ego=(%.2f, %.2f, %.2f), yaw=%.2f, offset=%.2f",
              name().c_str(), ps.pose.position.x, ps.pose.position.y, ps.pose.position.z, yaw, offset_z);
 
     // 为了 checkArrival 判断，更新目标点
@@ -109,7 +128,7 @@ NodeStatus PlanningControl::onStart() {
 
     // 初始化目标
     initializeTarget(goal_res.value());
-    return NodeStatus::RUNNING;
+    return target_initialized ? NodeStatus::RUNNING : NodeStatus::FAILURE;
 }
 
 NodeStatus PlanningControl::onRunning() {
@@ -122,6 +141,7 @@ NodeStatus PlanningControl::onRunning() {
         }
         
         initializeTarget(goal_res.value());
+        if (!target_initialized) return NodeStatus::FAILURE;
         ROS_INFO("[%s]: Target acquired!", name().c_str());
     }
 

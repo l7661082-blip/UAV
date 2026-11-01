@@ -1,4 +1,6 @@
 <launch>
+    <!-- 实测墙面、可飞行域和气球站位在同一份 YAML 中管理。 -->
+    <rosparam command="load" file="$(find mission_pkg)/config/referee_policy.yaml" ns="referee_policy"/>
     <!-- 任务参数配置 -->
     <param name="goal_topic" value="/move_base_simple/goal" type="str"/>
     <param name="planner_cmd_topic" value="/planning/pos_cmd" type="str"/>
@@ -20,8 +22,7 @@
     <param name="tolerance" value="0.15" type="double"/>
     <param name="yaw_tolerance" value="0.15" type="double"/>
 
-    <!-- 安全边界参数：x/y 为当前仿真值；待实测四边界 odom 坐标后再调整。 -->
-    <!-- 待测参数：场地原点、四边界坐标、机体半径和安全余量。 -->
+    <!-- 旧的越界后悬停保护保留；导航目标的实测夹紧由 boundary/flight 执行。 -->
     <param name="safety/enabled" value="true" type="bool"/>
     <param name="safety/x_min" value="-1.0" type="double"/>
     <param name="safety/x_max" value="6.0" type="double"/>
@@ -55,7 +56,7 @@
     <!-- 返回穿越方框 -->
     <param name="return_cross_frame/turn_pos"     value="4.5;0.5;1.8"   type="str"/>    <!-- 转向位置 -->
     <param name="return_cross_frame/turn_yaw"     value="3.14159"        type="double"/> <!-- 转向航向(rad) -->
-    <param name="return_cross_frame/body_forward"  value="0.5;0.0;0.0"   type="str"/>    <!-- 机体系前进距离 -->
+    <param name="return_cross_frame/body_forward"  value="0.3;0.0;0.0"   type="str"/>    <!-- 净空确认后仅前进一次 -->
 
     <!-- 降落 -->
     <param name="land/return_pos" value="0.0;0.0;0.5" type="str"/>     <!-- 降落前返回位置 -->
@@ -74,23 +75,8 @@
     <param name="return_cross_frame/exit_yaw" value="0.0" type="double"/>
 
     <!-- ============================================ -->
-    <!-- 气球打击区域配置（比赛前调整）                   -->
-    <!-- approach_pos: PlanningControl 规划飞到的接近点  -->
-    <!-- goal: 到达后转向的位置                          -->
-    <!-- yaw:  到达位置时的机头朝向 (rad)                -->
+    <!-- 气球观察站位由 referee_policy.yaml 唯一提供。   -->
     <!-- ============================================ -->
-    <!-- A区 (红色气球) -->
-    <param name="balloon_zone_A/approach_pos" value="5.3;1.0;1.0"  type="str"/>
-    <param name="balloon_zone_A/goal"         value="5.3;1.0;1.0"  type="str"/>
-    <param name="balloon_zone_A/yaw"          value="1.5708"        type="double"/>
-    <!-- B区 (紫色气球) -->
-    <param name="balloon_zone_B/approach_pos" value="5.3;-2.0;0.7" type="str"/>
-    <param name="balloon_zone_B/goal"         value="5.3;-2.0;0.7" type="str"/>
-    <param name="balloon_zone_B/yaw"          value="3.14159"       type="double"/>
-    <!-- C区 (蓝色气球) -->
-    <param name="balloon_zone_C/approach_pos" value="5.3;1.0;0.7"  type="str"/>
-    <param name="balloon_zone_C/goal"         value="5.3;1.0;0.7"  type="str"/>
-    <param name="balloon_zone_C/yaw"          value="-1.5708"       type="double"/>
 
     <!-- ============================================ -->
     <!-- VisualServo 视觉伺服参数（与手调 XML 一致）     -->
@@ -103,6 +89,12 @@
     <param name="visual_servo/forward_velocity"         value="1.0"   type="double"/>
     <param name="visual_servo/sprint_velocity"          value="1.5"   type="double"/>
     <param name="visual_servo/sprint_time"              value="1.2"   type="double"/>
+    <param name="visual_servo/initial_wait_s"            value="2.0"   type="double"/>
+    <param name="visual_servo/lost_recovery_s"           value="1.5"   type="double"/>
+    <param name="visual_servo/scan_period_s"             value="4.0"   type="double"/>
+    <param name="visual_servo/scan_max_cycles"           value="3"     type="int"/>
+    <param name="visual_servo/recovery_timeout_s"        value="5.0"   type="double"/>
+    <param name="visual_servo/max_task_time_s"           value="50.0"  type="double"/>
 
     <!-- 运行任务节点（LLM 模式） -->
     <node pkg="mission_pkg" type="bt_ros" name="llm_mission_node" output="screen">

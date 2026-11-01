@@ -28,6 +28,8 @@ NodeStatus TargetTracker::onStart() {
     filter_window_size = window_res.value();
 
     pixel_history.clear();
+    // 多颜色任务共用黑板键，清掉上一段留下的有效像素目标。
+    setOutput("pixel_target", PixelTarget());
     
     ROS_INFO("[%s]: Pixel tracking filter window: %d", name().c_str(), filter_window_size);
     

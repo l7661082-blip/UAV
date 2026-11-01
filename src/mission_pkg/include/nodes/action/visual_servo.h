@@ -10,6 +10,8 @@
 
 #include "base/drone_action_node.h"
 #include <ros/time.h>
+#include <std_msgs/String.h>
+#include <string>
 
 class VisualServo : public DroneActionNode {
 public:
@@ -31,9 +33,20 @@ private:
     PixelTarget last_target_;
     ros::Time last_valid_detection_time_;
     bool has_ever_received_data_;
-    double max_area_ratio_;
     ros::Time sprint_start_time_;
     int align_stable_frames_;
+    ros::Time task_start_time_;
+    ros::Time recovery_start_time_;
+    ros::Time scan_start_time_;
+    geometry_msgs::Point last_seen_uav_pos_;
+    geometry_msgs::Point scan_hold_pos_;
+    double last_seen_yaw_{0.0};
+    double scan_anchor_yaw_{0.0};
+    bool returning_to_last_seen_{false};
+    bool scanning_{false};
+    bool failure_reported_{false};
+    ros::Publisher result_pub_;
+    std::string result_label_;
     
     // 相机参数
     double img_cx_, img_cy_;
@@ -60,7 +73,12 @@ private:
     double data_timeout_;           // 数据超时 (s)
     double approach_area_threshold_;// 触发冲刺的面积占比阈值
     double center_tolerance_;       // 对齐判定区域比例
-    double search_yaw_rate_;        // 搜索模式旋转速度 (rad/s)
+    double initial_wait_s_;
+    double lost_recovery_s_;
+    double scan_period_s_;
+    double recovery_timeout_s_;
+    double max_task_time_s_;
+    int scan_max_cycles_;
     
     // 微分计算用
     double prev_err_x_, prev_err_y_;
@@ -73,6 +91,8 @@ private:
     void updateTargetData();
     bool isTargetLost();
     bool isCentered() const;
+    NodeStatus runScan(const ros::Time& now);
+    NodeStatus failStage(const std::string& reason);
     
     // PD 控制器
     double computeYawRate(double err_x, double dt);

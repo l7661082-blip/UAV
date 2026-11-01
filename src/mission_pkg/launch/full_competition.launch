@@ -1,4 +1,5 @@
 <launch>
+    <rosparam command="load" file="$(find mission_pkg)/config/referee_policy.yaml" ns="referee_policy"/>
     <!-- 日志目录（从环境变量 LOG_DIR 读取，未设置则使用相对路径） -->
     <arg name="log_dir" default="/tmp/mission_logs"/>
 

@@ -7,6 +7,7 @@
  ******************************************************************************/
 #include "nodes/action/goto.h"
 #include "utils/pose_utils.h"
+#include "utils/flight_boundary.h"
 
 GoTo::GoTo(const std::string& name, const NodeConfig& config)
     : DroneActionNode(name, config) {}
@@ -15,6 +16,9 @@ PortsList GoTo::providedPorts() {
     return { InputPort<Position3D>("goal", "目标位置 (x, y, z), 为空则保持当前位置"),
              InputPort<double>("yaw", "目标绝对航向 (rad), 为空则保持当前航向"),
              InputPort<int>("frame", 0, "坐标系: 0=世界系(默认), 1=机体系"),
+             InputPort<bool>("allow_outside_flight_boundary", false, "仅场外起降区返回使用"),
+             InputPort<Position3D>("clearance_from", "框平面中心，机体系前进前检查"),
+             InputPort<double>("min_frame_clearance", 0.0, "沿航向离开框平面的最小距离"),
              InputPort<double>("tolerance", "到达容差"),
              InputPort<double>("yaw_tolerance", "偏航到达容差(rad)"),
              InputPort<double>("yaw_rate", 0.5, "最大偏航角速度 (rad/s)") };
@@ -29,6 +33,32 @@ NodeStatus GoTo::onStart() {
     auto goal_res = getInput<Position3D>("goal");
     auto frame_res = getInput<int>("frame");
     int frame = frame_res.value();
+
+    const double min_clearance = getInput<double>("min_frame_clearance").value();
+    if (!std::isfinite(min_clearance) || min_clearance < 0.0) {
+        ROS_ERROR("[%s] Invalid minimum frame clearance", name().c_str());
+        sendHoverCommand();
+        return NodeStatus::FAILURE;
+    }
+    if (min_clearance > 0.0) {
+        auto center = getInput<Position3D>("clearance_from");
+        if (frame != 1 || !center || !std::isfinite(center.value().x)
+                || !std::isfinite(center.value().y)) {
+            ROS_ERROR("[%s] Frame clearance requires body-frame GoTo and frame center", name().c_str());
+            sendHoverCommand();
+            return NodeStatus::FAILURE;
+        }
+        // 反向穿框后，应位于当前航向所指一侧；不在净空侧就拒绝前进。
+        const double signed_clearance =
+            (current_pos.x - center.value().x) * std::cos(current_yaw) +
+            (current_pos.y - center.value().y) * std::sin(current_yaw);
+        if (signed_clearance < min_clearance) {
+            ROS_WARN("[%s] Frame clearance %.3fm < %.3fm; body move blocked",
+                     name().c_str(), signed_clearance, min_clearance);
+            sendHoverCommand();
+            return NodeStatus::FAILURE;
+        }
+    }
 
     if (goal_res) {
         Position3D goal = goal_res.value();
@@ -47,6 +77,27 @@ NodeStatus GoTo::onStart() {
         }
     } else {
         target_pos = current_pos;
+    }
+
+    const bool allow_outside_flight_boundary = getInput<bool>("allow_outside_flight_boundary").value();
+    if (allow_outside_flight_boundary) {
+        if (!std::isfinite(target_pos.x) || !std::isfinite(target_pos.y)
+                || !std::isfinite(target_pos.z)) {
+            ROS_ERROR("[%s] Non-finite landing-area goal rejected", name().c_str());
+            sendHoverCommand();
+            return NodeStatus::FAILURE;
+        }
+        ROS_WARN("[%s] Explicit landing-area exception: navigation goal is not clamped", name().c_str());
+    } else {
+        FlightBoundary boundary;
+        if (!FlightBoundary::load(boundary)) {
+            sendHoverCommand();
+            return NodeStatus::FAILURE;
+        }
+        if (!boundary.clamp(target_pos, name())) {
+            sendHoverCommand();
+            return NodeStatus::FAILURE;
+        }
     }
 
     // 解析航向

@@ -1,4 +1,33 @@
-# 待裁判口径确认：仅记录，不作为飞行控制或自动评分依据。
+# 评分口径待裁判确认；boundary/flight 是实测导航约束，不参与自动判分。
 bonus_over_100: unconfirmed
 collision_stage_zero_rule: unconfirmed
 time_bonus_calculation: unconfirmed
+
+boundary:
+  frame: world
+  measured_wall:
+    x_min: 0.972
+    x_max: 6.102
+    y_min: -3.293
+    y_max: 1.706
+    ground_z: -0.16
+  # 四面墙内缩 0.35 m；起降区 x=0 在此域外，只有降落返回显式放行。
+  flight:
+    x_min: 1.32
+    x_max: 5.75
+    y_min: -2.94
+    y_max: 1.36
+
+# 观察站位；末段由视觉伺服跟随沿墙巡游的小车气球。
+balloon_zone_A:
+  approach_pos: "3.5;0.2;1.0"
+  goal: "3.5;0.2;1.0"
+  yaw: 1.5708
+balloon_zone_B:
+  approach_pos: "3.5;-1.8;1.0"
+  goal: "3.5;-1.8;1.0"
+  yaw: -1.5708
+balloon_zone_C:
+  approach_pos: "4.6;-0.8;1.0"
+  goal: "4.6;-0.8;1.0"
+  yaw: 0.0

@@ -1,4 +1,5 @@
 <launch>
+    <rosparam command="load" file="$(find mission_pkg)/config/referee_policy.yaml" ns="referee_policy"/>
     <!-- 穿框单独测试 (static 模式) -->
 
     <!-- 相机内参 (640x480, 90° FOV) -->

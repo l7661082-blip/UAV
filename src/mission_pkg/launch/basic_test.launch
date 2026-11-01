@@ -1,4 +1,5 @@
 <launch>
+    <rosparam command="load" file="$(find mission_pkg)/config/referee_policy.yaml" ns="referee_policy"/>
     <!-- 任务参数配置 -->
     <param name="goal_topic" value="/move_base_simple/goal" type="str"/>
     <param name="planner_cmd_topic" value="/planning/pos_cmd" type="str"/>

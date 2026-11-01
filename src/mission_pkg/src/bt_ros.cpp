@@ -23,6 +23,9 @@
 #include <mutex>
 #include <atomic>
 #include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdio>
 
 #include "nlohmann_json.hpp"
 #include "mavros_cnt.h"
@@ -227,6 +230,11 @@ std::string commandToXmlNode(const std::string& command) {
         if (!nh.getParam(key, val)) val = def;
         return val;
     };
+    auto getInt = [&](const std::string& key, int def) -> int {
+        int val;
+        if (!nh.getParam(key, val)) val = def;
+        return val;
+    };
 
     // ---- takeoff ----
     if (cmd == "takeoff") {
@@ -243,10 +251,10 @@ std::string commandToXmlNode(const std::string& command) {
     if (cmd == "cross_frame") {
         std::string observe   = getStr("cross_frame/observe_pos",   "0.0;-1.0;1.0");
         std::string delay     = std::to_string((int)getDbl("cross_frame/observe_delay_ms", 2000));
-        std::string obj_w     = std::to_string(getDbl("cross_frame/object_width",  1.25));
-        std::string obj_h     = std::to_string(getDbl("cross_frame/object_height", 1.25));
+        std::string obj_w     = std::to_string(getDbl("cross_frame/object_width",  1.3));
+        std::string obj_h     = std::to_string(getDbl("cross_frame/object_height", 1.3));
         std::string occ_dir   = getStr("cross_frame/occlusion_direction", "right");
-        std::string exp_pos   = getStr("cross_frame/expected_pos",  "0.4;3.25;1.0");
+        std::string exp_pos   = getStr("cross_frame/expected_pos",  "3.25;-0.4;1.0");
         std::string z_tol     = std::to_string(getDbl("cross_frame/z_tolerance", 0.5));
         std::string filter_w  = std::to_string((int)getDbl("cross_frame/filter_window_size", 20));
         std::string offset_z  = std::to_string(getDbl("cross_frame/offset_z", 1.0));
@@ -269,7 +277,7 @@ std::string commandToXmlNode(const std::string& command) {
     
     // ---- detect_aruco: 飞到二维码上方识别 ----
     if (cmd == "detect_aruco") {
-        std::string hover = getStr("aruco/hover_pos", "-1.0;4.0;1.8");
+        std::string hover = getStr("aruco/hover_pos", "4.5;0.5;1.2");
         return
             "      <GoTo goal=\"" + hover + "\"/>\n"
             "      <Parallel success_count=\"2\" failure_count=\"1\">\n"
@@ -280,10 +288,11 @@ std::string commandToXmlNode(const std::string& command) {
     
     // ---- return_cross_frame: 返回并反向穿越方框 ----
     if (cmd == "return_cross_frame") {
-        std::string turn_pos     = getStr("return_cross_frame/turn_pos",   "-1.0;4.0;1.8");
+        std::string turn_pos     = getStr("return_cross_frame/turn_pos",   "4.5;0.5;1.8");
         double      turn_yaw     = getDbl("return_cross_frame/turn_yaw",   3.14159);
-        std::string body_fwd     = getStr("return_cross_frame/body_forward", "0.5;0.0;0.0");
+        std::string body_fwd     = getStr("return_cross_frame/body_forward", "0.3;0.0;0.0");
         double      exit_yaw     = getDbl("return_cross_frame/exit_yaw",   0.0);
+        std::string offset_z    = std::to_string(getDbl("cross_frame/offset_z", 1.0));
         
         return
             "      <!-- 旋转180度 -->\n"
@@ -291,11 +300,10 @@ std::string commandToXmlNode(const std::string& command) {
             "      <!-- 返回规划终点 -->\n"
             "      <GoTo goal=\"{planning_end_pos}\"/>\n"
             "      <!-- 反向穿越方框 -->\n"
-            "      <PlanningControl goal=\"{frame_center}\"/>\n"
-            "      <!-- 机体系前进 -->\n"
-            "      <GoTo goal=\"" + body_fwd + "\" frame=\"1\"/>\n"
-            "      <!-- 掉头朝向气球区域 -->\n"
-            "      <GoTo goal=\"" + body_fwd + "\" frame=\"1\" yaw=\"" + std::to_string(exit_yaw) + "\"/>\n";
+            "      <PlanningControl goal=\"{frame_center}\" offset_z=\"" + offset_z + "\"/>\n"
+            "      <!-- 离框平面至少 0.5m 后，仅前进 0.3m 并转向 -->\n"
+            "      <GoTo goal=\"" + body_fwd + "\" frame=\"1\" clearance_from=\"{frame_center}\" "
+            "min_frame_clearance=\"0.5\" yaw=\"" + std::to_string(exit_yaw) + "\"/>\n";
     }
     
     // ---- hit_balloon:颜色 ----
@@ -309,22 +317,28 @@ std::string commandToXmlNode(const std::string& command) {
             zone = "A";
         }
         
-        std::string param_prefix = "balloon_zone_" + zone;
-        std::string approach_pos = getStr(param_prefix + "/approach_pos", "5.3;1.0;0.7");
-        std::string goto_pos = getStr(param_prefix + "/goal", "0.0;-0.8;0.5");
-        double yaw_val = getDbl(param_prefix + "/yaw", -1.570796);
+        std::string param_prefix = "referee_policy/balloon_zone_" + zone;
+        std::string approach_pos = getStr(param_prefix + "/approach_pos", "");
+        std::string goto_pos = getStr(param_prefix + "/goal", "");
+        double yaw_val = getDbl(param_prefix + "/yaw", 0.0);
         std::string yaw = std::to_string(yaw_val);
         std::string balloon_name = color + "_balloon";
         
         // VisualServo 参数（从参数服务器读取，与手调 XML 一致）
-        std::string vs_k_p_yaw  = std::to_string(getDbl("visual_servo/k_p_yaw_rate", 0.1));
-        std::string vs_k_d_yaw  = std::to_string(getDbl("visual_servo/k_d_yaw_rate", 0.008));
+        std::string vs_k_p_yaw  = std::to_string(getDbl("visual_servo/k_p_yaw_rate", 0.003));
+        std::string vs_k_d_yaw  = std::to_string(getDbl("visual_servo/k_d_yaw_rate", 0.001));
         std::string vs_k_p_vz   = std::to_string(getDbl("visual_servo/k_p_vz", 0.01));
         std::string vs_k_d_vz   = std::to_string(getDbl("visual_servo/k_d_vz", 0.006));
         std::string vs_area_th  = std::to_string(getDbl("visual_servo/approach_area_threshold", 0.08));
         std::string vs_fwd_vel  = std::to_string(getDbl("visual_servo/forward_velocity", 1.0));
         std::string vs_sprint_v = std::to_string(getDbl("visual_servo/sprint_velocity", 1.5));
         std::string vs_sprint_t = std::to_string(getDbl("visual_servo/sprint_time", 1.2));
+        std::string vs_initial_wait = std::to_string(getDbl("visual_servo/initial_wait_s", 2.0));
+        std::string vs_lost_recovery = std::to_string(getDbl("visual_servo/lost_recovery_s", 1.5));
+        std::string vs_scan_period = std::to_string(getDbl("visual_servo/scan_period_s", 4.0));
+        std::string vs_scan_cycles = std::to_string(getInt("visual_servo/scan_max_cycles", 3));
+        std::string vs_recovery_timeout = std::to_string(getDbl("visual_servo/recovery_timeout_s", 5.0));
+        std::string vs_max_task = std::to_string(getDbl("visual_servo/max_task_time_s", 50.0));
         
         ROS_INFO("Hit balloon: color=%s -> zone=%s, approach=%s, goto=%s, yaw=%s, target=%s", 
                  color.c_str(), zone.c_str(), approach_pos.c_str(), goto_pos.c_str(), yaw.c_str(), balloon_name.c_str());
@@ -336,17 +350,18 @@ std::string commandToXmlNode(const std::string& command) {
             "      <GoTo goal=\"" + goto_pos + "\" yaw=\"" + yaw + "\"/>\n"
             "      <!-- 跟踪并撞击气球 -->\n"
             "      <ForceSuccess>\n"
-            "        <Timeout msec=\"50000\">\n"
-            "          <Parallel success_count=\"1\" failure_count=\"1\">\n"
+            "        <Parallel success_count=\"1\" failure_count=\"1\">\n"
             "            <TargetTracker object_name=\"" + balloon_name + "\" "
             "confidence_threshold=\"0.8\" pixel_target=\"{balloon_pixel}\"/>\n"
-            "            <VisualServo pixel_target=\"{balloon_pixel}\" "
+            "            <VisualServo pixel_target=\"{balloon_pixel}\" result_label=\"" + cmd + "\" "
             "k_p_yaw_rate=\"" + vs_k_p_yaw + "\" k_d_yaw_rate=\"" + vs_k_d_yaw + "\" "
             "k_p_vz=\"" + vs_k_p_vz + "\" k_d_vz=\"" + vs_k_d_vz + "\" "
             "approach_area_threshold=\"" + vs_area_th + "\" "
-            "forward_velocity=\"" + vs_fwd_vel + "\" sprint_velocity=\"" + vs_sprint_v + "\" sprint_time=\"" + vs_sprint_t + "\"/>\n"
-            "          </Parallel>\n"
-            "        </Timeout>\n"
+            "forward_velocity=\"" + vs_fwd_vel + "\" sprint_velocity=\"" + vs_sprint_v + "\" sprint_time=\"" + vs_sprint_t + "\" "
+            "initial_wait_s=\"" + vs_initial_wait + "\" lost_recovery_s=\"" + vs_lost_recovery + "\" "
+            "scan_period_s=\"" + vs_scan_period + "\" scan_max_cycles=\"" + vs_scan_cycles + "\" "
+            "recovery_timeout_s=\"" + vs_recovery_timeout + "\" max_task_time_s=\"" + vs_max_task + "\"/>\n"
+            "        </Parallel>\n"
             "      </ForceSuccess>\n";
     }
     
@@ -356,7 +371,8 @@ std::string commandToXmlNode(const std::string& command) {
         double ret_yaw = getDbl("land/return_yaw", 0.0);
         return
             "      <!-- 返回起点 -->\n"
-            "      <GoTo goal=\"" + ret_pos + "\" yaw=\"" + std::to_string(ret_yaw) + "\"/>\n"
+            "      <GoTo goal=\"" + ret_pos + "\" yaw=\"" + std::to_string(ret_yaw) + "\" "
+            "allow_outside_flight_boundary=\"true\"/>\n"
             "      <!-- 降落 -->\n"
             "      <Land/>\n";
     }
@@ -431,6 +447,55 @@ bool isSupportedCommand(const std::string& cmd) {
            cmd == "hit_balloon:purple" || cmd == "hit_balloon:blue";
 }
 
+bool validateBalloonStations(ros::NodeHandle& nh) {
+    std::array<std::array<double, 2>, 3> positions{};
+    constexpr std::array<const char*, 3> zones{{"A", "B", "C"}};
+    for (size_t i = 0; i < zones.size(); ++i) {
+        const std::string key = std::string("/referee_policy/balloon_zone_") + zones[i] + "/approach_pos";
+        std::string value;
+        std::string goal;
+        double yaw;
+        double x, y, z;
+        char extra;
+        if (!nh.getParam(key, value) || std::sscanf(value.c_str(), "%lf;%lf;%lf%c", &x, &y, &z, &extra) != 3
+                || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)
+                || !nh.getParam(std::string("/referee_policy/balloon_zone_") + zones[i] + "/goal", goal)
+                || !nh.getParam(std::string("/referee_policy/balloon_zone_") + zones[i] + "/yaw", yaw)
+                || !std::isfinite(yaw)) {
+            ROS_ERROR("Invalid or missing balloon station: %s", key.c_str());
+            return false;
+        }
+        double gx, gy, gz;
+        if (std::sscanf(goal.c_str(), "%lf;%lf;%lf%c", &gx, &gy, &gz, &extra) != 3
+                || !std::isfinite(gx) || !std::isfinite(gy) || !std::isfinite(gz)) {
+            ROS_ERROR("Invalid balloon station goal in zone %s", zones[i]);
+            return false;
+        }
+        positions[i] = {x, y};
+    }
+    for (size_t i = 0; i < positions.size(); ++i) {
+        for (size_t j = i + 1; j < positions.size(); ++j) {
+            const double distance = std::hypot(positions[i][0] - positions[j][0],
+                                               positions[i][1] - positions[j][1]);
+            if (distance < 0.6) {
+                ROS_ERROR("Balloon stations %s/%s are only %.3fm apart; require >= 0.6m",
+                          zones[i], zones[j], distance);
+                return false;
+            }
+        }
+    }
+    for (const char* color : {"red", "purple", "blue"}) {
+        std::string mapped_zone;
+        if (!nh.getParam(std::string("/balloon_color_") + color, mapped_zone)
+                || (mapped_zone != "A" && mapped_zone != "B" && mapped_zone != "C")) {
+            ROS_ERROR("Invalid balloon color-to-zone mapping for %s", color);
+            return false;
+        }
+    }
+    ROS_INFO("Balloon station XY distances validated (>= 0.6m)");
+    return true;
+}
+
 //==============================================================================
 // LLM 模式全局状态
 //==============================================================================
@@ -457,6 +522,7 @@ void llmCommandCallback(const std_msgs::String::ConstPtr& msg) {
     }
     
     g_abort_requested = false;
+    ros::param::set("/mission_runtime/balloon_stage_failed", false);
     ROS_INFO("=== Received LLM Command ===");
     ROS_INFO("Raw: %s", msg->data.c_str());
     
@@ -527,9 +593,12 @@ void llmCommandCallback(const std_msgs::String::ConstPtr& msg) {
         
         if (g_result_pub_ptr) {
             std_msgs::String result;
-            // 气球阶段现有 ForceSuccess 会吞掉超时/失败；不把流程完成冒充扎破成功。
+            // 气球段失败会继续后续任务；最终结果仍需保留失败标记。
+            bool balloon_failed = false;
+            ros::param::get("/mission_runtime/balloon_stage_failed", balloon_failed);
             result.data = (status == NodeStatus::SUCCESS)
-                ? (has_balloon_task ? "FLOW_COMPLETED_BALLOON_UNVERIFIED" : "SUCCESS")
+                ? (balloon_failed ? "FAILURE:BALLOON_SEGMENT" :
+                   (has_balloon_task ? "FLOW_COMPLETED_BALLOON_UNVERIFIED" : "SUCCESS"))
                 : "FAILURE";
             g_result_pub_ptr->publish(result);
         }
@@ -574,6 +643,7 @@ int main(int argc, char** argv) {
     
     // 4. 加载配置
     BehaviorTreeConfig config = loadConfiguration(nh_private);
+    if (config.mode == "llm" && !validateBalloonStations(nh)) return 1;
     
     // 5. 加载插件
     std::vector<std::string> plugin_files = loadPluginLibraries();
